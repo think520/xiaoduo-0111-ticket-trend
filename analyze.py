@@ -1274,15 +1274,16 @@ class Scale:
 
 
 def svg_header(width: int, height: int, title: str, subtitle: str = "",
-               pid: str = "dots", eyebrow: str = "工单趋势分析 · kami") -> List[str]:
-    """图内头部：mono eyebrow + 衬线标题 + 一行副题；画布为羊皮纸 + 点纹（实心色，不用 rgba）。"""
+               eyebrow: str = "工单趋势分析 · kami") -> List[str]:
+    """图内头部：mono eyebrow + 衬线标题 + 一行副题。
+
+    画布用象牙白（与卡片同色），避免图表在卡片里出现一块异色矩形；
+    不画 rgba / 渐变 / 投影，保持 kami 的纸面观感。
+    """
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" '
         f'height="auto" role="img" aria-label="{esc(title)}" font-family=\'{SERIF_STACK}\'>',
-        f'<defs><pattern id="{pid}" width="22" height="22" patternUnits="userSpaceOnUse">'
-        f'<circle cx="1" cy="1" r="0.9" fill="{PALETTE["dots"]}"/></pattern></defs>',
-        f'<rect width="{width}" height="{height}" fill="{PALETTE["parchment"]}"/>',
-        f'<rect width="{width}" height="{height}" fill="url(#{pid})" opacity="0.55"/>',
+        f'<rect width="{width}" height="{height}" fill="{PALETTE["ivory"]}"/>',
         f'<text x="24" y="20" font-size="10" letter-spacing="2.4" fill="{PALETTE["muted"]}" '
         f'font-family=\'{MONO_STACK}\'>{esc(eyebrow)}</text>',
         f'<text x="24" y="42" font-size="16" font-weight="500" fill="{PALETTE["ink"]}">{esc(title)}</text>',
@@ -1296,15 +1297,14 @@ def chart_daily_volume(metrics: Dict[str, Any]) -> str:
     daily = metrics["time"]["daily"]
     tickets_high = metrics["time"].get("high_daily") or {}
     days = list(daily.keys())
-    w, h = 860, 336
-    left, right, top, bottom = 56, 24, 80, 48
+    w, h = 860, 372
+    left, right, top, bottom = 56, 24, 80, 88
     max_v = max(daily.values()) if daily else 1
     x = Scale(0, max(1, len(days)), left, w - right)
     y = Scale(0, max_v + 1, h - bottom, top)
     bar_w = (w - left - right) / max(1, len(days)) * 0.55
     parts = svg_header(w, h, "D1 每日工单量（堆叠：高优先级 / 其他）",
-                       f"平均 {metrics['time']['daily_avg']} 条/天；峰值 {metrics['time']['peak_day']}（{metrics['time']['peak_count']} 条）",
-                       pid="dotsDaily")
+                       f"平均 {metrics['time']['daily_avg']} 条/天；峰值 {metrics['time']['peak_day']}（{metrics['time']['peak_count']} 条）",)
     for gv in range(0, max_v + 2):
         yy = y(gv)
         parts.append(f'<line x1="{left}" y1="{yy:.1f}" x2="{w - right}" y2="{yy:.1f}" stroke="{PALETTE["grid"]}" stroke-width="1"/>')
@@ -1326,12 +1326,13 @@ def chart_daily_volume(metrics: Dict[str, Any]) -> str:
         parts.append(f'<rect x="{cx - 9:.1f}" y="{y(total) - 17:.1f}" width="18" height="14" '
                      f'fill="{PALETTE["parchment"]}"/>')
         parts.append(f'<text x="{cx:.1f}" y="{y(total) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{total}</text>')
-        parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
-    parts.append(f'<line x1="{left}" y1="{h - 26}" x2="{w - right}" y2="{h - 26}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
-                 f'<rect x="{left}" y="{h - 16}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
-                 f'<text x="{left + 16}" y="{h - 7}" font-size="11" fill="{PALETTE["muted"]}">高优先级</text>'
-                 f'<rect x="{left + 90}" y="{h - 16}" width="10" height="10" fill="{PALETTE["series5"]}" rx="2"/>'
-                 f'<text x="{left + 106}" y="{h - 7}" font-size="11" fill="{PALETTE["muted"]}">其他优先级</text>')
+        parts.append(f'<text x="{cx:.1f}" y="{h - 66}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
+    # 图例自成一带：分隔线画在日期行下方，避免压到刻度文字
+    parts.append(f'<line x1="{left}" y1="{h - 46}" x2="{w - right}" y2="{h - 46}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
+                 f'<rect x="{left}" y="{h - 38}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
+                 f'<text x="{left + 16}" y="{h - 29}" font-size="11" fill="{PALETTE["muted"]}">高优先级</text>'
+                 f'<rect x="{left + 90}" y="{h - 38}" width="10" height="10" fill="{PALETTE["series5"]}" rx="2"/>'
+                 f'<text x="{left + 106}" y="{h - 29}" font-size="11" fill="{PALETTE["muted"]}">其他优先级</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -1347,8 +1348,7 @@ def chart_category_mix(metrics: Dict[str, Any]) -> str:
     x = Scale(0, max_v * 1.15, left, w - right)
     parts = svg_header(w, h, "D2 分类占比：前半段 vs 后半段",
                        f"前半段 {metrics['time']['early_days'][0]}~{metrics['time']['early_days'][-1]}"
-                       f"（{metrics['time']['early_count']} 条） vs 后半段 {metrics['time']['late_days'][0]}~{metrics['time']['late_days'][-1]}（{metrics['time']['late_count']} 条）",
-                       pid="dotsMix")
+                       f"（{metrics['time']['early_count']} 条） vs 后半段 {metrics['time']['late_days'][0]}~{metrics['time']['late_days'][-1]}（{metrics['time']['late_count']} 条）",)
     for i, c in enumerate(cats):
         yy = top + i * 42
         parts.append(f'<text x="{left - 12}" y="{yy + 18}" font-size="12" fill="{PALETTE["ink"]}" text-anchor="end">{esc(c)}</text>')
@@ -1374,8 +1374,7 @@ def chart_category_quadrant(metrics: Dict[str, Any]) -> str:
     x = Scale(0, max(0.4, max(share.values()) * 1.15), left, w - right)
     y = Scale(1, 5, h - bottom, top)
     parts = svg_header(w, h, "D3 分类象限：影响面（占比） × 客户体验（满意度）",
-                       "气泡 = 分类（大小 = 工单量）；左下区 = 占比 ≥20% 且满意度 ≤2.5，优先处理",
-                       pid="dotsQuad")
+                       "气泡 = 分类（大小 = 工单量）；左下区 = 占比 ≥20% 且满意度 ≤2.5，优先处理",)
     parts.append(f'<rect x="{left}" y="{y(3.0):.1f}" width="{x(0.2) - left:.1f}" height="{h - bottom - y(3.0):.1f}" fill="{PALETTE["zone"]}"/>')
     parts.append(f'<line x1="{x(0.2):.1f}" y1="{top}" x2="{x(0.2):.1f}" y2="{h - bottom}" stroke="{PALETTE["grid"]}" stroke-dasharray="4 4"/>')
     parts.append(f'<line x1="{left}" y1="{y(3.0):.1f}" x2="{w - right}" y2="{y(3.0):.1f}" stroke="{PALETTE["grid"]}" stroke-dasharray="4 4"/>')
@@ -1393,18 +1392,33 @@ def chart_category_quadrant(metrics: Dict[str, Any]) -> str:
         mean = sat.get(c, {}).get("mean") or 3
         pts.append((c, n, x(share[c]), y(mean), 5 + math.sqrt(n) * 2.6, mean))
     used: List[Tuple[float, float]] = []
+    axis_band_top = h - bottom + 4      # 横轴刻度文字所在带，标签不得侵入
     for c, n, cx, cy, r, mean in sorted(pts, key=lambda p: -p[1]):
         focal = share[c] >= 0.2 and (mean or 5) <= 2.5
         fill = PALETTE["tint"] if focal else PALETTE["ivory"]
         stroke = PALETTE["focal"] if focal else PALETTE["series3"]
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="{fill}" '
                      f'stroke="{stroke}" stroke-width="1.4"/>')
-        right_room = cx + r + 104 < w - right
-        tx = cx + r + 8 if right_room else cx - r - 8
-        anchor = "start" if right_room else "end"
-        ly = cy
-        while any(abs(tx - ux) < 92 and abs(ly - uy) < 21 for ux, uy in used):
-            ly += 21
+        # 候选位：右 → 左 → 上方；依次挑第一个既不撞别的标签、也不压到横轴刻度的位置
+        cands: List[Tuple[float, float, str]] = []
+        if cx + r + 104 < w - right:
+            cands.append((cx + r + 8, cy, "start"))
+        if cx - r - 104 > left:
+            cands.append((cx - r - 8, cy, "end"))
+        cands.append((cx, cy - r - 24, "middle"))
+        placed = None
+        for tx, ly, anchor in cands:
+            if ly + 18 > axis_band_top:
+                continue
+            if not any(abs(tx - ux) < 92 and abs(ly - uy) < 21 for ux, uy in used):
+                placed = (tx, ly, anchor)
+                break
+        if placed is None:
+            tx, ly, anchor = cands[-1]
+            while ly + 18 > axis_band_top or any(abs(tx - ux) < 92 and abs(ly - uy) < 21 for ux, uy in used):
+                ly -= 21
+            placed = (tx, ly, anchor)
+        tx, ly, anchor = placed
         used.append((tx, ly))
         parts.append(f'<text x="{tx:.1f}" y="{ly + 4:.1f}" font-size="11.5" fill="{PALETTE["ink"]}" '
                      f'text-anchor="{anchor}">{esc(c)}</text>')
@@ -1417,10 +1431,10 @@ def chart_category_quadrant(metrics: Dict[str, Any]) -> str:
 def chart_cluster_trend(metrics: Dict[str, Any], clusters: List[Cluster]) -> str:
     days = metrics["time"]["days"]
     target = next((c for c in clusters if c.key == "pay_state_mismatch"), clusters[0] if clusters else None)
-    w, h = 860, 346
-    left, right, top, bottom = 56, 24, 82, 48
+    w, h = 860, 372
+    left, right, top, bottom = 56, 24, 82, 88
     if target is None:
-        return "".join(svg_header(w, h, "D8 复发簇每日分布", "无簇数据", pid="dotsCluster") + ["</svg>"])
+        return "".join(svg_header(w, h, "D8 复发簇每日分布", "无簇数据") + ["</svg>"])
     cluster_daily = Counter(t.day for t in target.tickets)
     dominant = target.categories[0] if target.categories else None
     cat_daily = metrics["category"]["daily"].get(dominant, {}) if dominant else {}
@@ -1430,8 +1444,7 @@ def chart_cluster_trend(metrics: Dict[str, Any], clusters: List[Cluster]) -> str
     y = Scale(0, max_v + 1, h - bottom, top)
     bar_w = (w - left - right) / max(1, len(days)) * 0.52
     parts = svg_header(w, h, f"D8 复发簇持续强度：{target.name}",
-                       f"{target.size} 条 / 跨 {target.span_days} 天：深蓝为该簇，浅灰为其余同类工单",
-                       pid="dotsCluster")
+                       f"{target.size} 条 / 跨 {target.span_days} 天：深蓝为该簇，浅灰为其余同类工单",)
     for gv in range(0, max_v + 2):
         yy = y(gv)
         parts.append(f'<line x1="{left}" y1="{yy:.1f}" x2="{w - right}" y2="{yy:.1f}" stroke="{PALETTE["grid"]}"/>')
@@ -1442,15 +1455,15 @@ def chart_cluster_trend(metrics: Dict[str, Any], clusters: List[Cluster]) -> str
         pay_v = pay_daily.get(d, 0)
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(pay_v):.1f}" width="{bar_w:.1f}" height="{max(0, y(0) - y(pay_v)):.1f}" fill="{PALETTE["series5"]}" rx="2"/>')
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(cluster_v):.1f}" width="{bar_w:.1f}" height="{max(0, y(0) - y(cluster_v)):.1f}" fill="{PALETTE["focal"]}" rx="2"/>')
-        parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
+        parts.append(f'<text x="{cx:.1f}" y="{h - 66}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
         if cluster_v:
             parts.append(f'<rect x="{cx - 9:.1f}" y="{y(cluster_v) - 17:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
             parts.append(f'<text x="{cx:.1f}" y="{y(cluster_v) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{cluster_v}</text>')
-    parts.append(f'<line x1="{left}" y1="{h - 26}" x2="{w - right}" y2="{h - 26}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
-                 f'<rect x="{left}" y="{h - 16}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
-                 f'<text x="{left + 16}" y="{h - 7}" font-size="11" fill="{PALETTE["muted"]}">{esc(target.name)}</text>'
-                 f'<rect x="{left + 320}" y="{h - 16}" width="10" height="10" fill="{PALETTE["series5"]}" rx="2"/>'
-                 f'<text x="{left + 336}" y="{h - 7}" font-size="11" fill="{PALETTE["muted"]}">其余同类工单</text>')
+    parts.append(f'<line x1="{left}" y1="{h - 46}" x2="{w - right}" y2="{h - 46}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
+                 f'<rect x="{left}" y="{h - 38}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
+                 f'<text x="{left + 16}" y="{h - 29}" font-size="11" fill="{PALETTE["muted"]}">{esc(target.name)}</text>'
+                 f'<rect x="{left + 320}" y="{h - 38}" width="10" height="10" fill="{PALETTE["series5"]}" rx="2"/>'
+                 f'<text x="{left + 336}" y="{h - 29}" font-size="11" fill="{PALETTE["muted"]}">其余同类工单</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -1464,8 +1477,7 @@ def chart_backlog(metrics: Dict[str, Any]) -> str:
     x = Scale(0, max(1, len(days) - 1), left, w - right)
     y = Scale(0, max_v + 1, h - bottom, top)
     parts = svg_header(w, h, "D7 未解决工单累计（积压曲线）",
-                       f"窗口内累计未解决 {metrics['backlog']['unresolved']} 条，其中高优先级 {metrics['backlog']['high_unresolved']} 条",
-                       pid="dotsBacklog")
+                       f"窗口内累计未解决 {metrics['backlog']['unresolved']} 条，其中高优先级 {metrics['backlog']['high_unresolved']} 条",)
     for gv in range(0, max_v + 2):
         parts.append(f'<line x1="{left}" y1="{y(gv):.1f}" x2="{w - right}" y2="{y(gv):.1f}" stroke="{PALETTE["grid"]}"/>')
         parts.append(f'<text x="{left - 10}" y="{y(gv) + 4:.1f}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="end">{gv}</text>')
@@ -1495,8 +1507,7 @@ def chart_hourly(metrics: Dict[str, Any]) -> str:
     bar_w = (w - left - right) / len(hours) * 0.62
     peak_txt = "、".join(f"{p}:00" for p in sorted(peaks)) if peaks else "—"
     parts = svg_header(w, h, "D9 时段分布（按工单创建小时）",
-                       f"高峰时段：{peak_txt}；用于客服排班与高峰值守（样本量小，只作参考）",
-                       pid="dotsHourly")
+                       f"高峰时段：{peak_txt}；用于客服排班与高峰值守（样本量小，只作参考）",)
     for gv in range(0, max_v + 2):
         yy = y(gv)
         parts.append(f'<line x1="{left}" y1="{yy:.1f}" x2="{w - right}" y2="{yy:.1f}" stroke="{PALETTE["grid"]}"/>')

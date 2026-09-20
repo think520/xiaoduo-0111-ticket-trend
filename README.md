@@ -34,7 +34,7 @@ uv run analyze.py --strict
 | 文件 | 内容 |
 | --- | --- |
 | `output/趋势分析报告.md` | 摘要 → 数据质量 → 9 个维度 → 异常清单 → 工单级清单 → 方法与局限 → 附录 |
-| `output/dashboard.html` | 自包含单文件（内联 CSS/SVG、无 JS、无 CDN），双击即可看 KPI 卡 / 6 张图 / 异常卡 / 明细表 |
+| `output/dashboard.html` | 自包含单文件（内联 CSS/SVG、无 JS、无 CDN），双击即可看 KPI 条 / 6 张图（含结论式图注）/ 异常卡 / 明细表 |
 | `output/metrics.json` | 全部指标与异常的结构化结果，供复核与二次开发 |
 | `output/charts/*.svg` | 6 张矢量图，可直接嵌入 Markdown / PPT |
 
@@ -251,7 +251,9 @@ uv run analyze.py --strict
 
 ![高危异常详情](screenshots/06-运行结果-高危异常详情.png)
 
-**7）运行结果**：Dashboard 整页截图（KPI 卡 / 6 张图 / 复发簇表 / 异常卡，共 1600×5400 像素）
+**7）运行结果**：Dashboard 整页截图（KPI 条 / 6 张图 / 复发簇表 / 异常卡，共 1600×6200 像素）
+
+> Dashboard 的视觉语言遵循 **kami 设计规范**：暖羊皮纸底（`#f5f4ed`）、**唯一强调色 ink blue（`#1B365D`）**、其余全部为暖灰阶（`#504e49` / `#6b6a64` / `#b8b7b0` / `#d4d3cd`）、衬线主导的层级、细线分隔（无投影、无渐变、无外链字体）。图表调色板取自 kami 的数据图表 6 序列定义；宽表格与图表在窄屏可横向滑动，而不是把 860 宽的图缩成 4px 字号。
 
 ![Dashboard](screenshots/07-运行结果-Dashboard.png)
 

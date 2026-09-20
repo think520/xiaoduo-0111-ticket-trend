@@ -2,7 +2,7 @@
   "meta": {
     "version": "1.0.0",
     "input": "task5_tickets.json",
-    "generated_at": "2026-09-20 21:46:00",
+    "generated_at": "2026-09-20 21:52:06",
     "total": 50,
     "days": 11,
     "window": {
@@ -16,7 +16,8 @@
         "低": 72.0
       },
       "split_ratio": 0.5,
-      "min_cluster": 3
+      "min_cluster": 3,
+      "priority_map": {}
     }
   },
   "summary": {

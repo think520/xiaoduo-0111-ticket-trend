@@ -60,6 +60,30 @@ jobs:
           print("换数据集示例通过：24 条 / 5 个分类 / 4 条未解决 / JSON==CSV")
           PY
 
+      - name: 优先级词表归一化（--priority-map）
+        run: |
+          python - <<'PY'
+          import json
+          rows = json.load(open("task5_tickets.json", encoding="utf-8"))
+          rename = {"高": "P1", "中": "P2", "低": "P3"}
+          out = [dict(r, priority=rename[r["priority"]]) for r in rows]
+          json.dump(out, open("/tmp/p123.json", "w", encoding="utf-8"), ensure_ascii=False)
+          PY
+          set +e
+          python analyze.py --input /tmp/p123.json --outdir /tmp/pmap-off --strict --quiet; test $? -eq 1   # 未映射：strict 报错
+          set -e
+          python analyze.py --input /tmp/p123.json --outdir /tmp/pmap-on --strict --quiet \
+            --priority-map "P1=高,P2=中,P3=低"
+          python - <<'PY'
+          import json
+          m = json.load(open("/tmp/pmap-on/metrics.json", encoding="utf-8"))
+          assert m["dimensions"]["priority"]["high_share"] == 0.62, m["dimensions"]["priority"]["high_share"]
+          assert m["dimensions"]["resolution"]["breach_count"] == 4, m["dimensions"]["resolution"]["breach_count"]
+          assert m["summary"]["ticket_levels"] == {"P1": 5, "P2": 5, "P3": 13}
+          assert m["meta"]["config"]["priority_map"] == {"P1": "高", "P2": "中", "P3": "低"}
+          print("priority-map 通过：高优占比 62% / SLA 4 条 / 工单级 5-5-13")
+          PY
+
       - name: 校验产物齐全
         run: |
           test -f output/趋势分析报告.md

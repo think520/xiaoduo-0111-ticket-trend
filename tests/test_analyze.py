@@ -28,7 +28,8 @@ def make_args(**overrides) -> Namespace:
 
 
 def rows_to_result(rows, **overrides):
-    tickets, warnings = analyze.build_tickets(rows)
+    pmap = overrides.get("priority_map") or {}
+    tickets, warnings = analyze.build_tickets(rows, priority_map=pmap, priority_stats={})
     warnings = warnings + analyze.check_data_contract(tickets)
     result = analyze.build_result(tickets, warnings, make_args(**overrides), ROOT / "task5_tickets.json")
     return tickets, result
@@ -446,6 +447,50 @@ class TestSwapDataset(unittest.TestCase):
         tickets, _ = analyze.build_tickets(loaded, strict=True)   # 不应抛 DataError
         self.assertEqual(len(tickets), 50)
         self.assertEqual(sum(1 for t in tickets if not t.is_resolved), 8)  # 不能被当成全部未解决
+
+
+class TestPriorityMap(unittest.TestCase):
+    """--priority-map：把外部优先级词表（P1/P2/P3、High/Medium/Low）归一化成 高/中/低。
+
+    回归背景：不做归一化时工具不会报错，但"高优占比 / SLA 超时 / 工单级评分"会静默失效。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rows = load_fixture_rows()
+        cls.original = rows_to_result(cls.rows)[1]
+        rename = {"高": "P1", "中": "P2", "低": "P3"}
+        cls.mapped_rows = [dict(r, priority=rename[r["priority"]]) for r in cls.rows]
+        cls.mapping = {"P1": "高", "P2": "中", "P3": "低"}
+
+    def test_parse_priority_map(self):
+        self.assertEqual(analyze.parse_priority_map("P1=高,P2=中,P3=低"),
+                         {"P1": "高", "P2": "中", "P3": "低"})
+        self.assertEqual(analyze.parse_priority_map("High=高, Low=低"), {"High": "高", "Low": "低"})
+        self.assertEqual(analyze.parse_priority_map("  "), {})
+        with self.assertRaises(ValueError):
+            analyze.parse_priority_map("P1高")
+        with self.assertRaises(ValueError):
+            analyze.parse_priority_map("P1=")
+
+    def test_without_map_priority_metrics_break(self):
+        """不做映射：不报错，但高优占比与 SLA 判定失效——把这个失效模式固定成测试。"""
+        _, result = rows_to_result([dict(r) for r in self.mapped_rows])
+        self.assertEqual(result["dimensions"]["priority"]["high_share"], 0.0)
+        self.assertEqual(result["dimensions"]["resolution"]["breach_count"], 0)
+        self.assertEqual(result["summary"]["ticket_levels"]["P1"], 0)
+
+    def test_with_map_metrics_restored(self):
+        _, result = rows_to_result([dict(r) for r in self.mapped_rows], priority_map=self.mapping)
+        self.assertEqual(result["dimensions"], self.original["dimensions"])
+        self.assertEqual(result["summary"]["ticket_levels"], {"P1": 5, "P2": 5, "P3": 13})
+        self.assertEqual(result["meta"]["config"]["priority_map"], self.mapping)
+        self.assertEqual(sum(1 for t in result["warnings"] if "已按 --priority-map 归一化" in t), 1)
+
+    def test_cli_flag_is_wired(self):
+        parser = analyze.build_parser()
+        args = parser.parse_args(["--priority-map", "P1=高"])
+        self.assertEqual(args.priority_map, "P1=高")
 
 
 if __name__ == "__main__":

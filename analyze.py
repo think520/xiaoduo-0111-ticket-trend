@@ -407,7 +407,9 @@ class DataError(RuntimeError):
     """--strict 模式下输入不符合字段契约时抛出。"""
 
 
-def build_tickets(rows: List[Dict[str, Any]], strict: bool = False) -> Tuple[List[Ticket], List[str]]:
+def build_tickets(rows: List[Dict[str, Any]], strict: bool = False,
+                  priority_map: Optional[Dict[str, str]] = None,
+                  priority_stats: Optional[Dict[str, int]] = None) -> Tuple[List[Ticket], List[str]]:
     warnings: List[str] = []
     violations: List[str] = []
 
@@ -443,7 +445,12 @@ def build_tickets(rows: List[Dict[str, Any]], strict: bool = False) -> Tuple[Lis
             continue
         seen[tid] = idx
 
-        priority = str(row.get("priority") or "未标注").strip()
+        # --priority-map：把外部词表（P1/P2/P3、High/Medium/Low…）归一化成 高/中/低，
+        # 否则高优先级占比、SLA 判定、工单级评分都会静默失效（见换数据集指南 陷阱①）
+        raw_priority = str(row.get("priority") or "").strip()
+        priority = (priority_map or {}).get(raw_priority, raw_priority) or "未标注"
+        if priority_stats is not None and raw_priority and raw_priority != priority:
+            priority_stats[raw_priority] = priority_stats.get(raw_priority, 0) + 1
         if priority not in EXPECTED_PRIORITIES:
             flag(f"工单 {tid} 的优先级取值异常：{priority!r}（不计入 SLA 判定）")
         channel = str(row.get("channel") or "未知").strip()
@@ -499,6 +506,10 @@ def build_tickets(rows: List[Dict[str, Any]], strict: bool = False) -> Tuple[Lis
         warnings.append(f"有 {missing_sat} 条工单缺少满意度评分，已从满意度统计的分母中剔除")
     if missing_hours:
         warnings.append(f"有 {missing_hours} 条工单缺少处理时长，已从时长与 SLA 统计中剔除")
+    if priority_stats and priority_map:
+        detail = "、".join(f"{k}→{priority_map.get(k, k)}（{v} 条）" for k, v in sorted(priority_stats.items()))
+        warnings.append(f"已按 --priority-map 归一化优先级：{detail}；"
+                        f"高优占比、SLA 与工单级评分均按归一化后的 高/中/低 计算")
     if strict and violations:
         head = "\n  - ".join(violations[:10])
         more = "" if len(violations) <= 10 else f"\n  … 还有 {len(violations) - 10} 条"
@@ -2126,6 +2137,23 @@ def parse_sla(text: str) -> Dict[str, float]:
     return sla
 
 
+def parse_priority_map(text: str) -> Dict[str, str]:
+    """解析 --priority-map，例如 "P1=高,P2=中,P3=低"（也支持 High=高）。"""
+    mapping: Dict[str, str] = {}
+    for chunk in text.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if "=" not in chunk:
+            raise ValueError(f"优先级映射格式应为 P1=高,P2=中,P3=低，收到：{chunk!r}")
+        src, _, dst = chunk.partition("=")
+        src, dst = src.strip(), dst.strip()
+        if not src or not dst:
+            raise ValueError(f"优先级映射两侧都不能为空：{chunk!r}")
+        mapping[src] = dst
+    return mapping
+
+
 def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Namespace,
                  input_path: Path) -> Dict[str, Any]:
     sla = args.sla_dict
@@ -2187,10 +2215,11 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
                 ("version", VERSION), ("input", display_path(input_path)), ("generated_at", generated_at),
                 ("total", 0), ("days", 0),
                 ("window", OrderedDict([("start", None), ("end", None)])),
-                ("config", OrderedDict([
-                    ("sla", OrderedDict((k, float(v)) for k, v in sla.items())),
-                    ("split_ratio", args.split_ratio), ("min_cluster", args.min_cluster),
-                ])),
+            ("config", OrderedDict([
+                ("sla", OrderedDict((k, float(v)) for k, v in sla.items())),
+                ("split_ratio", args.split_ratio), ("min_cluster", args.min_cluster),
+                ("priority_map", OrderedDict(sorted(getattr(args, "priority_map", {}).items()))),
+            ])),
             ])),
             ("summary", OrderedDict([("total", 0), ("daily_avg", 0), ("days", 0), ("high_share", None),
                                      ("low_score_rate", None), ("unresolved", 0), ("breach_rate", None),
@@ -2286,6 +2315,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
                 ("sla", OrderedDict((k, float(v)) for k, v in sla.items())),
                 ("split_ratio", args.split_ratio),
                 ("min_cluster", args.min_cluster),
+                ("priority_map", OrderedDict(sorted(getattr(args, "priority_map", {}).items()))),
             ])),
         ])),
         ("summary", summary),
@@ -2348,6 +2378,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--formats", default="md,html,json,charts",
                         help="输出格式：md,html,json,charts（选 md/html 时会自动附带 SVG 图表，避免报告图裂）")
     parser.add_argument("--sla", default="高=24,中=48,低=72", help="SLA 目标（小时），如 高=12,中=24,低=48")
+    parser.add_argument("--priority-map", default="",
+                        help="优先级词表归一化，如 P1=高,P2=中,P3=低（换数据集时把外部优先级映射到 高/中/低）")
     parser.add_argument("--split-ratio", type=float, default=0.5, help="前后半段切分比例（默认 0.5）")
     parser.add_argument("--min-cluster", type=int, default=3, help="簇进入异常候选的最小条数（默认 3）")
     parser.add_argument("--strict", action="store_true",
@@ -2369,6 +2401,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except ValueError as exc:
         print(f"[错误] {exc}", file=sys.stderr)
         return 2
+    try:
+        args.priority_map = parse_priority_map(args.priority_map)
+    except ValueError as exc:
+        print(f"[错误] {exc}", file=sys.stderr)
+        return 2
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -2376,8 +2413,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     rows, load_warnings = load_rows(input_path)
+    priority_stats: Dict[str, int] = {}
     try:
-        tickets, build_warnings = build_tickets(rows, strict=args.strict)
+        tickets, build_warnings = build_tickets(rows, strict=args.strict,
+                                                priority_map=args.priority_map,
+                                                priority_stats=priority_stats)
     except DataError as exc:
         print(f"[错误] {exc}", file=sys.stderr)
         return 1

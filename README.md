@@ -12,7 +12,7 @@
 # 1) 分析（默认读脚本同目录的 task5_tickets.json，写到 output/）
 uv run analyze.py
 
-# 2) 跑验收测试（29 个用例，零依赖 unittest）
+# 2) 跑验收测试（45 个用例，零依赖 unittest）
 uv run python -m unittest discover -s tests -v
 
 # 3) 换 SLA 假设或换输入（示例）
@@ -28,8 +28,8 @@ uv run analyze.py --strict
 
 | 文件 | 内容 |
 | --- | --- |
-| `output/趋势分析报告.md` | 摘要 → 数据质量 → 8 个维度 → 异常清单 → 方法与局限 → 附录 |
-| `output/dashboard.html` | 自包含单文件（内联 CSS/SVG、无 JS、无 CDN），双击即可看 KPI 卡 / 5 张图 / 异常卡 / 明细表 |
+| `output/趋势分析报告.md` | 摘要 → 数据质量 → 9 个维度 → 异常清单 → 工单级清单 → 方法与局限 → 附录 |
+| `output/dashboard.html` | 自包含单文件（内联 CSS/SVG、无 JS、无 CDN），双击即可看 KPI 卡 / 6 张图 / 异常卡 / 明细表 |
 | `output/metrics.json` | 全部指标与异常的结构化结果，供复核与二次开发 |
 | `output/charts/*.svg` | 6 张矢量图，可直接嵌入 Markdown / PPT |
 
@@ -41,7 +41,7 @@ uv run analyze.py --strict
 
 | 类别 | 文件 |
 | --- | --- |
-| 代码 | [`analyze.py`](analyze.py)（单文件：加载/校验/指标/簇/工单级评分/SVG/渲染）、[`tests/test_analyze.py`](tests/test_analyze.py)（43 个用例）、[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) |
+| 代码 | [`analyze.py`](analyze.py)（单文件：加载/校验/指标/簇/工单级评分/SVG/渲染）、[`tests/test_analyze.py`](tests/test_analyze.py)（45 个用例）、[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) |
 | 文档 | [`docs/01-需求文档.md`](docs/01-需求文档.md)、[`docs/02-实现文档.md`](docs/02-实现文档.md)、本 README |
 | 结果 | [`output/趋势分析报告.md`](output/趋势分析报告.md)、[`output/dashboard.html`](output/dashboard.html)、[`output/metrics.json`](output/metrics.json) |
 | 截图 | [`screenshots/`](screenshots)：开发工具、单元测试、运行输出、报告摘要、异常清单与得分、高危异常详情 |
@@ -50,7 +50,7 @@ uv run analyze.py --strict
 
 ## 一、指标定义及理由
 
-每个维度都必须能改变主管的某个**具体动作**，否则不做（这是取舍原则）。8 个维度的定义、理由与本数据集实测值：
+每个维度都必须能改变主管的某个**具体动作**，否则不做（这是取舍原则）。9 个维度的定义、理由与本数据集实测值：
 
 | 维度 | 指标口径 | 对主管决策的价值 | 本数据实测 |
 | --- | --- | --- | --- |
@@ -115,7 +115,7 @@ uv run analyze.py --strict
 
 ### 2.5 怎么验证结论可信（不只是"跑得出结果"）
 
-1. **43 个 unittest 用例**（`uv run python -m unittest discover -s tests -v` 全绿）：覆盖加载/清洗/指标/簇/异常/统计/时段/滚动环比/工单级清单/严格模式/确定性，关键数字都写成断言（如占比漂移 = +26.1pp、退款退货 P50 = 12h 与全量口径 45.2h 并存、超时只算已解决工单、簇成员不重复且 + 未归类 = 50、P1 = 5 条）。
+1. **45 个 unittest 用例**（`uv run python -m unittest discover -s tests -v` 全绿）：覆盖加载/清洗/指标/簇/异常/统计/时段/滚动环比/工单级清单/严格模式/确定性，关键数字都写成断言（如占比漂移 = +26.1pp、退款退货 P50 = 12h 与全量口径 45.2h 并存、超时只算已解决工单、簇成员不重复且 + 未归类 = 50、P1 = 5 条）。
 2. **人工复核路径**：报告里每条异常都给出"复核方式"和工单号，例如 A1 要求打开 T008/T012/T020/… 核对描述是否同一根因。
 3. **可复现性**：零第三方依赖 + 确定性算法 + 相同输入两次运行结果一致（`test_same_input_same_metrics`）。
 4. **口径可对抗**：`--sla 高=12,中=24,低=48` 可直接检验"超时类结论"对假设的敏感度（测试里验证了改变 SLA 会改变超时数）。
@@ -180,8 +180,8 @@ uv run analyze.py --strict
 
 **AI 做了什么**
 
-- 先用一次性脚本对 50 条数据做侦察（分布、前后半段对比、关键词聚类验证），再据此确定 8 个维度与 6 类信号；
-- 编写 `analyze.py`（零依赖分析 + SVG 图表 + Markdown/HTML 渲染）与 29 个 unittest 用例；
+- 先用一次性脚本对 50 条数据做侦察（分布、前后半段对比、关键词聚类验证），再据此确定分析维度与 6 类信号（第一轮 8 个维度，第二轮按业界口径补了 D9 时段分布与滚动环比）；
+- 编写 `analyze.py`（零依赖分析 + SVG 图表 + Markdown/HTML 渲染）与 45 个 unittest 用例；
 - 起草需求文档、实现文档、本 README 与报告模板；
 - 采集并校验截图（终端运行、单元测试、报告摘要、异常清单与得分、高危异常详情）。
 
@@ -189,7 +189,7 @@ uv run analyze.py --strict
 
 - 定技术路线：Python 零依赖 + `uv run analyze.py`（评审方无需安装任何包）；
 - 确认 SLA 假设值、分析维度取舍、分级策略（接受"小样本保守、宁可少报"）；
-- 验收：查看报告与异常清单是否可行动、复核 12 条支付工单的成员是否正确、确认 29 个测试全绿。
+- 验收：查看报告与异常清单是否可行动、复核 12 条支付工单的成员是否正确、确认 45 个测试全绿。
 
 **AI 犯过、被人机自检抓出来并修正的错误**（保留真实记录，说明"AI 生成"不等于"未经审查"）
 
@@ -209,6 +209,14 @@ uv run analyze.py --strict
 
 **可复现性声明**：分析过程本身**不调用任何 LLM/API**，全部为本地确定性算法；AI 只参与"开发过程"，不参与"运行时推断"。因此本工具的结果与 AI 的随机性无关，换台机器跑同一份数据会得到同样的数字。
 
+**为什么工具内不接 LLM（一个被评估后放弃的方案）**：第二轮迭代时评估过"可选 `--llm` 增强"——用 embedding 相似度做语义聚类（业界参考：同类项目用 60% 相似度阈值 + 7 天窗口判趋势）、再用 LLM 生成行动建议。评估结论是**本期不实现**，理由三条：
+
+1. **评审方零配置可复现**：不需要 API key、不联网就能跑出全部结论，面试官拿到仓库即可验证；
+2. **每条结论可审计**：现在的异常都能追到具体阈值、证据和工单号，换成 LLM 之后部分结论会变成"模型说的"，可解释性下降；
+3. **数据合规**：工单描述是客户数据，发给第三方 API 需要额外的隐私评估与脱敏流程，不适合在演示项目里默认开启。
+
+对应的替代做法写在工具里：关键词簇 + 一致性倍数 + 未归类工单清单（把召回缺口显式暴露），并用 45 个测试锁住行为。如果后续要做，设计已经写好（见实现文档 §10）：默认关闭的开关、输出标注"由 LLM 生成 + 模型名 + 输入摘要"、阈值公开可调、无 key 自动降级。
+
 ---
 
 ## 六、截图
@@ -217,7 +225,7 @@ uv run analyze.py --strict
 
 ![开发工具](screenshots/01-开发工具-Codex-Agent.png)
 
-**2）开发过程**：29 个 unittest 用例全部通过（`Ran 29 tests` / `OK`）
+**2）开发过程**：45 个 unittest 用例全部通过（`Ran 45 tests` / `OK`）
 
 ![单元测试](screenshots/03-开发过程-单元测试.png)
 
@@ -254,9 +262,9 @@ uv run analyze.py --strict
 ├─ task5_ticket_fields.md     # 字段说明（原始文件，未改动）
 ├─ README.md                  # 本文件
 ├─ docs/
-│  ├─ 01-需求文档.md           # 背景/目标/8 个维度/异常定义/验收标准/待确认项
+│  ├─ 01-需求文档.md           # 背景/目标/9 个维度/异常定义/验收标准/待确认项
 │  └─ 02-实现文档.md           # 技术选型/架构/算法口径/CLI/渲染/容错/测试
-├─ tests/test_analyze.py      # 43 个验收用例
+├─ tests/test_analyze.py      # 45 个验收用例
 ├─ screenshots/               # 7 张提交截图
 └─ output/                    # 运行产物（可删除后重新生成）
 ```

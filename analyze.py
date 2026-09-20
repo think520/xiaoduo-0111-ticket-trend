@@ -2139,7 +2139,8 @@ def write_outputs(result: Dict[str, Any], outdir: Path, formats: Iterable[str]) 
     outdir.mkdir(parents=True, exist_ok=True)
     formats = set(formats)
     charts_dir = outdir / "charts"
-    if "charts" in formats or "html" in formats:
+    # 选 md/html 时自动附带 SVG：报告的图片链接指向 charts/，不落盘会出现图裂
+    if {"charts", "html", "md"} & formats:
         charts_dir.mkdir(parents=True, exist_ok=True)
         for name, svg in result["charts"].items():
             path = charts_dir / name
@@ -2170,7 +2171,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input", default=str(here / "task5_tickets.json"), help="输入 JSON/CSV 路径")
     parser.add_argument("--outdir", default=str(here / "output"), help="输出目录")
-    parser.add_argument("--formats", default="md,html,json,charts", help="输出格式：md,html,json,charts")
+    parser.add_argument("--formats", default="md,html,json,charts",
+                        help="输出格式：md,html,json,charts（选 md/html 时会自动附带 SVG 图表，避免报告图裂）")
     parser.add_argument("--sla", default="高=24,中=48,低=72", help="SLA 目标（小时），如 高=12,中=24,低=48")
     parser.add_argument("--split-ratio", type=float, default=0.5, help="前后半段切分比例（默认 0.5）")
     parser.add_argument("--min-cluster", type=int, default=3, help="簇进入异常候选的最小条数（默认 3）")

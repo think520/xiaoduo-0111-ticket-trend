@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
@@ -288,6 +289,23 @@ class TestCharts(unittest.TestCase):
         for name, svg in charts.items():
             self.assertTrue(svg.startswith("<svg"), name)
             self.assertTrue(svg.rstrip().endswith("</svg>"), name)
+
+    def test_md_only_still_writes_charts(self):
+        """--formats md 时也必须落盘 SVG，否则报告里的图片链接会图裂。"""
+        outdir = Path(tempfile.mkdtemp(prefix="fmt_md_"))
+        rows = load_fixture_rows()
+        _, result = rows_to_result(rows)
+        written = {p.name for p in analyze.write_outputs(result, outdir, ["md"])}
+        self.assertIn("趋势分析报告.md", written)
+        self.assertIn("01_daily_volume.svg", written)
+        self.assertEqual(len(list((outdir / "charts").glob("*.svg"))), 6)
+
+    def test_charts_not_written_for_json_only(self):
+        outdir = Path(tempfile.mkdtemp(prefix="fmt_json_"))
+        rows = load_fixture_rows()
+        _, result = rows_to_result(rows)
+        written = {p.name for p in analyze.write_outputs(result, outdir, ["json"])}
+        self.assertEqual(written, {"metrics.json"})
 
 
 class TestClustersAndAnomalies(unittest.TestCase):

@@ -28,6 +28,9 @@ jobs:
           cp output/charts/*.svg _site/charts/
           cp "output/趋势分析报告.md" _site/report.md
           cp README.md _site/README.md
+          mkdir -p _site/docs _site/examples
+          cp docs/*.md _site/docs/
+          cp examples/* _site/examples/
 
       - uses: actions/configure-pages@v5
 

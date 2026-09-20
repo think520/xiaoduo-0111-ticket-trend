@@ -43,6 +43,23 @@ jobs:
           python analyze.py --outdir /tmp/md-only --formats md --quiet
           test "$(ls /tmp/md-only/charts/*.svg | wc -l)" -eq 6
 
+      - name: 换数据集（自带示例：JSON 与 CSV 必须得到一致结果）
+        run: |
+          python analyze.py --input examples/tickets_example.json --outdir /tmp/ex-json --strict --quiet
+          python analyze.py --input examples/tickets_example.csv  --outdir /tmp/ex-csv  --strict --quiet
+          python - <<'PY'
+          import json
+          data = {}
+          for name in ("/tmp/ex-json", "/tmp/ex-csv"):
+              m = json.load(open(f"{name}/metrics.json", encoding="utf-8"))
+              assert m["meta"]["total"] == 24, (name, m["meta"]["total"])
+              assert len(m["dimensions"]["category"]["counts"]) == 5, name
+              assert m["dimensions"]["backlog"]["unresolved"] == 4, name
+              data[name] = m["dimensions"]
+          assert data["/tmp/ex-json"] == data["/tmp/ex-csv"], "JSON 与 CSV 的指标必须完全一致"
+          print("换数据集示例通过：24 条 / 5 个分类 / 4 条未解决 / JSON==CSV")
+          PY
+
       - name: 校验产物齐全
         run: |
           test -f output/趋势分析报告.md

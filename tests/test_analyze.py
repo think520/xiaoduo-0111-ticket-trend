@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 import sys
 import tempfile
@@ -402,6 +403,49 @@ class TestDeterminism(unittest.TestCase):
         export = {k: v for k, v in result.items() if k not in ("charts", "_clusters")}
         text = json.dumps(export, ensure_ascii=False)
         self.assertIn("pay_state_mismatch", text)
+
+
+class TestSwapDataset(unittest.TestCase):
+    """换数据集能力：仓库自带示例（与 task5 完全不同）必须能跑，且 JSON 与 CSV 结果一致。
+
+    回归背景：CSV 里所有值都是字符串，早期 `--strict` 会因为 `is_resolved: "True"`
+    不是 Python bool 而报错（甚至把全部工单当成未解决），本类锁住这个行为。
+    """
+
+    def _result_for(self, path: Path):
+        rows, load_warnings = analyze.load_rows(path)
+        tickets, build_warnings = analyze.build_tickets(rows, strict=True)
+        warnings = load_warnings + build_warnings + analyze.check_data_contract(tickets)
+        return tickets, analyze.build_result(tickets, warnings, make_args(), path)
+
+    def test_example_files_exist_and_are_small(self):
+        ex = ROOT / "examples"
+        self.assertTrue((ex / "tickets_example.json").exists())
+        self.assertTrue((ex / "tickets_example.csv").exists())
+
+    def test_example_json_and_csv_agree(self):
+        tickets_json, r_json = self._result_for(ROOT / "examples" / "tickets_example.json")
+        tickets_csv, r_csv = self._result_for(ROOT / "examples" / "tickets_example.csv")
+        self.assertEqual(len(tickets_json), 24)
+        self.assertEqual(len(tickets_csv), 24)
+        self.assertEqual(r_json["meta"]["total"], 24)
+        self.assertEqual(len(r_json["dimensions"]["category"]["counts"]), 5)
+        self.assertEqual(r_json["dimensions"]["backlog"]["unresolved"], 4)
+        # 同内容的 JSON 与 CSV 必须得到完全一致的指标
+        self.assertEqual(r_json["dimensions"], r_csv["dimensions"])
+        self.assertEqual(r_json["meta"]["days"], r_csv["meta"]["days"])
+
+    def test_strict_accepts_string_booleans_from_csv(self):
+        rows = [dict(r) for r in load_fixture_rows()]
+        tmp = Path(tempfile.mkdtemp(prefix="swap_csv_")) / "t.csv"
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        loaded, _ = analyze.load_rows(tmp)
+        tickets, _ = analyze.build_tickets(loaded, strict=True)   # 不应抛 DataError
+        self.assertEqual(len(tickets), 50)
+        self.assertEqual(sum(1 for t in tickets if not t.is_resolved), 8)  # 不能被当成全部未解决
 
 
 if __name__ == "__main__":

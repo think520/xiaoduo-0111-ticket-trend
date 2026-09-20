@@ -467,10 +467,8 @@ def build_tickets(rows: List[Dict[str, Any]], strict: bool = False) -> Tuple[Lis
         raw_resolved = row.get("is_resolved")
         resolved = _to_bool(raw_resolved)
         if resolved is None:
-            flag(f"工单 {tid} 的 is_resolved 缺失或不是布尔值（{raw_resolved!r}），按未解决处理")
+            flag(f"工单 {tid} 的 is_resolved 缺失或无法解析（{raw_resolved!r}），按未解决处理")
             resolved = False
-        elif not isinstance(raw_resolved, bool) and strict:
-            flag(f"工单 {tid} 的 is_resolved 不是布尔类型：{raw_resolved!r}")
 
         tickets.append(Ticket(
             ticket_id=tid,

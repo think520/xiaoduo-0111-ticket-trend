@@ -23,10 +23,11 @@
 | --- | --- |
 | 提交说明（本文件） | `SUBMISSION.md` |
 | 分析工具（零第三方依赖，单文件） | [`analyze.py`](analyze.py) |
-| 验收测试（45 个用例，CI 自动跑） | [`tests/test_analyze.py`](tests/test_analyze.py) |
+| 验收测试（48 个用例，CI 自动跑） | [`tests/test_analyze.py`](tests/test_analyze.py) |
 | README（指标定义及理由 / 评估方法 / 局限性 / AI 使用） | [`README.md`](README.md) |
 | 需求文档（9 个维度与决策价值、异常定义、验收标准） | [`docs/01-需求文档.md`](docs/01-需求文档.md) |
 | 实现文档（技术选型、算法口径、CLI、渲染、测试策略） | [`docs/02-实现文档.md`](docs/02-实现文档.md) |
+| 换数据集指南（评测方拿别的数据也能直接跑） | [`docs/03-换数据集指南.md`](docs/03-换数据集指南.md) + [`examples/`](examples) |
 | 结构化报告 | [`output/趋势分析报告.md`](output/趋势分析报告.md) |
 | Dashboard（自包含单文件，无 JS/CDN） | [`output/dashboard.html`](output/dashboard.html) ｜ 在线版见顶部链接 |
 | 机器可读指标 | [`output/metrics.json`](output/metrics.json) |
@@ -38,7 +39,7 @@
 | --- | --- |
 | `01-开发工具-Codex-Agent.png` | 开发过程：需求梳理 → 编码 → 自检 → 修正 |
 | `02-运行结果-终端.png` | 运行结果：`uv run analyze.py` 的分级结论与 9 个产物 |
-| `03-开发过程-单元测试.png` | 开发过程：45 个 unittest 全部通过（`Ran 45 tests` / `OK`） |
+| `03-开发过程-单元测试.png` | 开发过程：48 个 unittest 全部通过（`Ran 48 tests` / `OK`） |
 | `04-运行结果-报告摘要.png` | 运行结果：报告 8 条摘要 + 数据质量告警 |
 | `05-运行结果-异常清单与得分.png` | 运行结果：14 条异常信号分级/得分 + 工单级 P1/P2/P3 计数 |
 | `06-运行结果-高危异常详情.png` | 运行结果：A1 的证据、判断依据、建议动作、复核方式 |
@@ -48,10 +49,13 @@
 
 ```bash
 uv run analyze.py                                  # 生成报告 / Dashboard / metrics.json + 6 张图
-uv run python -m unittest discover -s tests -v     # 45 个用例
+uv run python -m unittest discover -s tests -v     # 48 个用例
 uv run analyze.py --strict                         # 严格校验：字段类型/取值违规直接报错退出
 uv run analyze.py --sla 高=12,中=24,低=48           # 换 SLA 假设重算
+uv run analyze.py --input examples/tickets_example.json --strict   # 换数据集（示例，CSV 同样支持）
 ```
+
+> 换数据集的完整说明（字段契约、四步体检、必须改的 5 个位置、三个坑）见 [`docs/03-换数据集指南.md`](docs/03-换数据集指南.md)；`examples/` 里是一份与 task5 完全不同的示例数据，JSON 与 CSV 结果一致，CI 每次推送都验证。
 
 ## 关键数字速查
 
@@ -65,7 +69,7 @@ uv run analyze.py --sla 高=12,中=24,低=48           # 换 SLA 假设重算
 | 满意度 | 均值 2.36，低分率 54% |
 | 积压 | 未解决 8 条（高优 7 条，最长挂起 T031 120h） |
 | 时段 | 高峰 09:00 / 10:00 / 14:00，最忙 09:00 |
-| 工程 | 零第三方依赖 · 45 个测试 · CI 每次推送自动跑 · 相同输入结果完全一致 |
+| 工程 | 零第三方依赖 · 48 个测试 · CI 每次推送自动跑 · 相同输入结果完全一致 |
 
 ---
 
@@ -85,7 +89,7 @@ uv run analyze.py --sla 高=12,中=24,低=48           # 换 SLA 假设重算
 
 ## 自评：哪里强、哪里弱、边界在哪
 
-**强**：每条异常都能回溯到具体阈值 + 工单号；双口径并列（避免与其它看板数字对不上）；45 个测试 + CI 把行为锁住；零依赖、同一输入结果完全一致；有在线 Demo 可以一键点开验证。
+**强**：每条异常都能回溯到具体阈值 + 工单号；双口径并列（避免与其它看板数字对不上）；48 个测试 + CI 把行为锁住；零依赖、同一输入结果完全一致；有在线 Demo 可以一键点开验证。
 
 **弱（写在明处）**：
 

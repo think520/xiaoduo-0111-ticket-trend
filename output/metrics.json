@@ -2,7 +2,7 @@
   "meta": {
     "version": "1.0.0",
     "input": "F:\\claude projects\\xiaoduo keji\\task5_tickets.json",
-    "generated_at": "2026-09-20 19:58:32",
+    "generated_at": "2026-09-20 20:21:12",
     "total": 50,
     "days": 11,
     "window": {
@@ -31,6 +31,11 @@
       "高危": 4,
       "关注": 7,
       "观察": 3
+    },
+    "ticket_levels": {
+      "P1": 5,
+      "P2": 5,
+      "P3": 13
     }
   },
   "summary_lines": [
@@ -39,7 +44,9 @@
     "客户体验最差的是 投诉（满意度均值 1.0，低分率 100.0%）；全局低分率 54.0%，均值 2.4。",
     "处理最慢的是 退款退货（已解决口径均值 30.0h，P90 96h），且未解决 5 条，是最主要的流程堵点。",
     "未解决工单 8 条（高优先级 7 条），SLA 超时 4 条（超时率 9.5%，仅已解决口径），另有 5 条未解决工单挂起时长已超 SLA。",
-    "复发簇共识别 10 个，覆盖 38 条工单；未归类 12 条，可能需要补充规则或人工复核。"
+    "复发簇共识别 10 个，覆盖 38 条工单；未归类 12 条，可能需要补充规则或人工复核。",
+    "最近 3 天（06-09、06-10、06-11）日均 5.33 条，此前 3 天（06-06、06-07、06-08）日均 5.0 条，变化 +6.6% → 判定为「稳定」（阈值 ±20%）。",
+    "工单级跟进清单：P1 5 条、P2 5 条、P3 13 条（共 23 条，按分值排序，最前面的 T031、T042、T047）；P1/P2 是本工具的跟进优先级，不是企业正式事故等级。"
   ],
   "dimensions": {
     "time": {
@@ -94,6 +101,59 @@
       "early_avg": 3.8,
       "late_avg": 5.17,
       "growth_pct": 0.36,
+      "rolling_3d": {
+        "window": 3,
+        "available": true,
+        "recent_days": [
+          "2024-06-09",
+          "2024-06-10",
+          "2024-06-11"
+        ],
+        "prior_days": [
+          "2024-06-06",
+          "2024-06-07",
+          "2024-06-08"
+        ],
+        "recent_count": 16,
+        "prior_count": 15,
+        "recent_avg": 5.33,
+        "prior_avg": 5.0,
+        "change_pct": 0.066,
+        "trend": "稳定",
+        "threshold": 0.2
+      },
+      "hourly": {
+        "00": 0,
+        "01": 0,
+        "02": 0,
+        "03": 0,
+        "04": 0,
+        "05": 0,
+        "06": 0,
+        "07": 0,
+        "08": 5,
+        "09": 9,
+        "10": 7,
+        "11": 5,
+        "12": 3,
+        "13": 4,
+        "14": 7,
+        "15": 5,
+        "16": 5,
+        "17": 0,
+        "18": 0,
+        "19": 0,
+        "20": 0,
+        "21": 0,
+        "22": 0,
+        "23": 0
+      },
+      "peak_hours": [
+        "09",
+        "10",
+        "14"
+      ],
+      "busiest_hour": "09",
       "high_daily": {
         "2024-06-01": 1,
         "2024-06-02": 2,
@@ -268,6 +328,13 @@
       "p50": 6.0,
       "p90": 24.0,
       "max": 96.0,
+      "alt": {
+        "n": 50,
+        "mean": 19.69,
+        "p50": 7.0,
+        "p90": 50.4,
+        "max": 120.0
+      },
       "resolved_count": 42,
       "unresolved_count": 8,
       "unresolved_rate": 0.16,
@@ -348,6 +415,9 @@
           "p50": 5.0,
           "p90": 8.0,
           "max": 12.0,
+          "alt_mean": 5.25,
+          "alt_p90": 8.0,
+          "alt_max": 12.0,
           "unresolved": 1
         },
         "退款退货": {
@@ -356,6 +426,9 @@
           "p50": 12.0,
           "p90": 96.0,
           "max": 96.0,
+          "alt_mean": 45.23,
+          "alt_p90": 96.0,
+          "alt_max": 120.0,
           "unresolved": 5
         },
         "物流查询": {
@@ -364,6 +437,9 @@
           "p50": 8.0,
           "p90": 48.0,
           "max": 48.0,
+          "alt_mean": 24.5,
+          "alt_p90": 48.0,
+          "alt_max": 48.0,
           "unresolved": 2
         },
         "商品咨询": {
@@ -372,6 +448,9 @@
           "p50": 1.0,
           "p90": 1.0,
           "max": 1.0,
+          "alt_mean": 0.9,
+          "alt_p90": 1.0,
+          "alt_max": 1.0,
           "unresolved": 0
         },
         "账号问题": {
@@ -380,6 +459,9 @@
           "p50": 2.0,
           "p90": 12.0,
           "max": 12.0,
+          "alt_mean": 5.0,
+          "alt_p90": 9.6,
+          "alt_max": 12.0,
           "unresolved": 0
         },
         "投诉": {
@@ -388,6 +470,9 @@
           "p50": 12.0,
           "p90": 48.0,
           "max": 48.0,
+          "alt_mean": 23.0,
+          "alt_p90": 40.8,
+          "alt_max": 48.0,
           "unresolved": 0
         }
       }
@@ -1453,6 +1538,417 @@
       "action": "按安全事件流程核查登录日志与下单设备，必要时冻结并联系用户",
       "verify": "打开原始工单核对描述是否同一根因；若属于不同根因，请补充/拆分规则簇",
       "level_order": 2
+    }
+  ],
+  "ticket_ranking": [
+    {
+      "ticket_id": "T031",
+      "level": "P1",
+      "score": 11,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 120.0,
+      "satisfaction": 1,
+      "cluster": "退货运费争议与报销未兑现",
+      "reasons": [
+        "未解决",
+        "挂起 120h 已超 SLA 24h",
+        "高优先级",
+        "耗时 120h ≥ 全量 P90 50.4h",
+        "满意度 1 分",
+        "命中复发簇：退货运费争议与报销未兑现"
+      ],
+      "rank": 1
+    },
+    {
+      "ticket_id": "T042",
+      "level": "P1",
+      "score": 11,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 72.0,
+      "satisfaction": 1,
+      "cluster": "退货运费争议与报销未兑现",
+      "reasons": [
+        "未解决",
+        "挂起 72h 已超 SLA 24h",
+        "高优先级",
+        "耗时 72h ≥ 全量 P90 50.4h",
+        "满意度 1 分",
+        "命中复发簇：退货运费争议与报销未兑现"
+      ],
+      "rank": 2
+    },
+    {
+      "ticket_id": "T047",
+      "level": "P1",
+      "score": 11,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 96.0,
+      "satisfaction": 1,
+      "cluster": "退款/退货到账与审核超期",
+      "reasons": [
+        "未解决",
+        "挂起 96h 已超 SLA 24h",
+        "高优先级",
+        "耗时 96h ≥ 全量 P90 50.4h",
+        "满意度 1 分",
+        "命中复发簇：退款/退货到账与审核超期"
+      ],
+      "rank": 3
+    },
+    {
+      "ticket_id": "T019",
+      "level": "P1",
+      "score": 9,
+      "category": "物流查询",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 36.0,
+      "satisfaction": 1,
+      "cluster": "收货/派送/退件异常",
+      "reasons": [
+        "未解决",
+        "挂起 36h 已超 SLA 24h",
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：收货/派送/退件异常"
+      ],
+      "rank": 4
+    },
+    {
+      "ticket_id": "T039",
+      "level": "P1",
+      "score": 9,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 36.0,
+      "satisfaction": 1,
+      "cluster": "售后规则争议（无理由退货/自动确认收货）",
+      "reasons": [
+        "未解决",
+        "挂起 36h 已超 SLA 24h",
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：售后规则争议（无理由退货/自动确认收货）"
+      ],
+      "rank": 5
+    },
+    {
+      "ticket_id": "T036",
+      "level": "P2",
+      "score": 8,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 24.0,
+      "satisfaction": 1,
+      "cluster": "售后规则争议（无理由退货/自动确认收货）",
+      "reasons": [
+        "未解决",
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：售后规则争议（无理由退货/自动确认收货）"
+      ],
+      "rank": 6
+    },
+    {
+      "ticket_id": "T046",
+      "level": "P2",
+      "score": 8,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": false,
+      "hours": 6.0,
+      "satisfaction": 1,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "未解决",
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 7
+    },
+    {
+      "ticket_id": "T001",
+      "level": "P2",
+      "score": 7,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 72.0,
+      "satisfaction": 2,
+      "cluster": "退款/退货到账与审核超期",
+      "reasons": [
+        "高优先级",
+        "耗时 72h ≥ 全量 P90 50.4h",
+        "满意度 2 分",
+        "命中复发簇：退款/退货到账与审核超期"
+      ],
+      "rank": 8
+    },
+    {
+      "ticket_id": "T007",
+      "level": "P2",
+      "score": 7,
+      "category": "退款退货",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 96.0,
+      "satisfaction": 1,
+      "cluster": "退款/退货到账与审核超期",
+      "reasons": [
+        "高优先级",
+        "耗时 96h ≥ 全量 P90 50.4h",
+        "满意度 1 分",
+        "命中复发簇：退款/退货到账与审核超期"
+      ],
+      "rank": 9
+    },
+    {
+      "ticket_id": "T033",
+      "level": "P2",
+      "score": 7,
+      "category": "物流查询",
+      "priority": "中",
+      "is_resolved": false,
+      "hours": 48.0,
+      "satisfaction": 2,
+      "cluster": "物流信息停滞",
+      "reasons": [
+        "未解决",
+        "中优先级",
+        "满意度 2 分",
+        "命中复发簇：物流信息停滞"
+      ],
+      "rank": 10
+    },
+    {
+      "ticket_id": "T006",
+      "level": "P3",
+      "score": 5,
+      "category": "物流查询",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 48.0,
+      "satisfaction": 2,
+      "cluster": "收货/派送/退件异常",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：收货/派送/退件异常"
+      ],
+      "rank": 11
+    },
+    {
+      "ticket_id": "T010",
+      "level": "P3",
+      "score": 5,
+      "category": "投诉",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 24.0,
+      "satisfaction": 1,
+      "cluster": "客服体验（态度/等待/机器人）",
+      "reasons": [
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：客服体验（态度/等待/机器人）"
+      ],
+      "rank": 12
+    },
+    {
+      "ticket_id": "T012",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 6.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 13
+    },
+    {
+      "ticket_id": "T020",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 5.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 14
+    },
+    {
+      "ticket_id": "T022",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 8.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 15
+    },
+    {
+      "ticket_id": "T027",
+      "level": "P3",
+      "score": 5,
+      "category": "物流查询",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 24.0,
+      "satisfaction": 2,
+      "cluster": "物流信息停滞",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：物流信息停滞"
+      ],
+      "rank": 16
+    },
+    {
+      "ticket_id": "T030",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 6.0,
+      "satisfaction": 1,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 17
+    },
+    {
+      "ticket_id": "T032",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 4.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 18
+    },
+    {
+      "ticket_id": "T034",
+      "level": "P3",
+      "score": 5,
+      "category": "投诉",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 12.0,
+      "satisfaction": 1,
+      "cluster": "客服体验（态度/等待/机器人）",
+      "reasons": [
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：客服体验（态度/等待/机器人）"
+      ],
+      "rank": 19
+    },
+    {
+      "ticket_id": "T035",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 8.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 20
+    },
+    {
+      "ticket_id": "T041",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 12.0,
+      "satisfaction": 2,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 21
+    },
+    {
+      "ticket_id": "T049",
+      "level": "P3",
+      "score": 5,
+      "category": "物流查询",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 24.0,
+      "satisfaction": 2,
+      "cluster": "收货/派送/退件异常",
+      "reasons": [
+        "高优先级",
+        "满意度 2 分",
+        "命中复发簇：收货/派送/退件异常"
+      ],
+      "rank": 22
+    },
+    {
+      "ticket_id": "T050",
+      "level": "P3",
+      "score": 5,
+      "category": "支付问题",
+      "priority": "高",
+      "is_resolved": true,
+      "hours": 8.0,
+      "satisfaction": 1,
+      "cluster": "支付-扣款与订单状态不一致",
+      "reasons": [
+        "高优先级",
+        "满意度 1 分",
+        "命中复发簇：支付-扣款与订单状态不一致"
+      ],
+      "rank": 23
     }
   ],
   "unclustered": [

@@ -152,6 +152,143 @@ class TestMetrics(unittest.TestCase):
         base = self.result["dimensions"]["resolution"]["breach_count"]
         self.assertGreater(strict["dimensions"]["resolution"]["breach_count"], base)
 
+    def test_alt_scope_matches_common_tooling(self):
+        """全量口径（含未解决 + 线性插值）应与同行/Excel 常见结果一致。"""
+        alt = self.dims["resolution"]["alt"]
+        self.assertEqual(alt["n"], 50)
+        self.assertAlmostEqual(alt["mean"], 19.69, places=2)
+        self.assertAlmostEqual(alt["p90"], 50.4, places=1)
+        refund = self.dims["resolution"]["by_category"]["退款退货"]
+        self.assertAlmostEqual(refund["alt_mean"], 45.23, places=2)
+        self.assertAlmostEqual(refund["alt_p90"], 96.0, places=1)
+
+    def test_two_scope_note_is_in_report(self):
+        markdown = analyze.render_markdown(self.result)
+        self.assertIn("口径对照", markdown)
+        self.assertIn("全量口径", markdown)
+
+    def test_linear_vs_nearest_rank_percentile(self):
+        values = [1, 2, 3, 4]
+        self.assertEqual(analyze.percentile(values, 0.9), 4)        # nearest-rank
+        self.assertAlmostEqual(analyze.percentile_linear(values, 0.9), 3.7, places=2)  # 线性插值
+        self.assertAlmostEqual(analyze.percentile_linear([1, 2, 3, 4, 5], 0.5), 3.0, places=2)
+
+
+class TestTimeAndHourly(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rows = load_fixture_rows()
+        cls.tickets, cls.result = rows_to_result(cls.rows)
+        cls.t = cls.result["dimensions"]["time"]
+
+    def test_hourly_distribution(self):
+        hourly = self.t["hourly"]
+        self.assertEqual(len(hourly), 24)
+        self.assertEqual(sum(hourly.values()), 50)
+        self.assertEqual(self.t["busiest_hour"], "09")
+        self.assertEqual(self.t["peak_hours"][0], "09")
+        self.assertEqual(hourly["09"], 9)
+
+    def test_rolling_three_day_comparison(self):
+        roll = self.t["rolling_3d"]
+        self.assertTrue(roll["available"])
+        self.assertEqual(roll["recent_days"], ["2024-06-09", "2024-06-10", "2024-06-11"])
+        self.assertEqual(roll["prior_days"], ["2024-06-06", "2024-06-07", "2024-06-08"])
+        self.assertAlmostEqual(roll["change_pct"], 0.066, places=3)
+        self.assertEqual(roll["trend"], "稳定")
+
+    def test_rolling_threshold_behaviour(self):
+        # 造一组"最近三天明显变少"的数据：前三天每天 4 条，最近三天每天 1 条
+        base = load_fixture_rows()[0]
+        rows = []
+        for day, count in (("2024-06-03", 4), ("2024-06-04", 4), ("2024-06-05", 4),
+                           ("2024-06-06", 1), ("2024-06-07", 1), ("2024-06-08", 1)):
+            for _ in range(count):
+                row = dict(base)
+                row["ticket_id"] = f"S{len(rows) + 1:03d}"
+                row["created_at"] = f"{day} 09:00"
+                rows.append(row)
+        _, result = rows_to_result(rows)
+        roll = result["dimensions"]["time"]["rolling_3d"]
+        self.assertAlmostEqual(roll["change_pct"], -0.75, places=2)
+        self.assertEqual(roll["trend"], "下降")
+
+
+class TestTicketRanking(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rows = load_fixture_rows()
+        cls.tickets, cls.result = rows_to_result(cls.rows)
+        cls.ranks = cls.result["ticket_ranking"]
+
+    def test_level_counts(self):
+        counts = self.result["summary"]["ticket_levels"]
+        self.assertEqual(counts["P1"], 5)
+        self.assertEqual(counts["P2"], 5)
+        self.assertEqual(counts["P3"], 13)
+        self.assertEqual(len(self.ranks), 23)
+
+    def test_top_ticket_is_worst_unresolved_refund(self):
+        top = self.ranks[0]
+        self.assertEqual(top["ticket_id"], "T031")
+        self.assertEqual(top["level"], "P1")
+        self.assertEqual(top["score"], 11)
+        self.assertFalse(top["is_resolved"])
+        self.assertIn("未解决", top["reasons"])
+        self.assertTrue(any("SLA" in r for r in top["reasons"]))
+
+    def test_levels_match_score_bands(self):
+        for r in self.ranks:
+            if r["level"] == "P1":
+                self.assertGreaterEqual(r["score"], 9)
+            elif r["level"] == "P2":
+                self.assertTrue(7 <= r["score"] <= 8)
+            else:
+                self.assertTrue(5 <= r["score"] <= 6)
+            self.assertTrue(r["reasons"], f"{r['ticket_id']} 缺少命中原因")
+
+    def test_ranking_sorted_and_disclaimer_present(self):
+        scores = [r["score"] for r in self.ranks]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        markdown = analyze.render_markdown(self.result)
+        self.assertIn("工单级优先跟进清单", markdown)
+        self.assertIn("不是企业正式事故等级", markdown)
+
+
+class TestStrictMode(unittest.TestCase):
+    def test_strict_passes_on_valid_fixture(self):
+        rows = load_fixture_rows()
+        tickets, _ = analyze.build_tickets(rows, strict=True)
+        self.assertEqual(len(tickets), 50)
+
+    def test_strict_rejects_bad_enum_and_type(self):
+        rows = [dict(r) for r in load_fixture_rows()]
+        rows[0]["priority"] = "紧急"
+        rows[1]["is_resolved"] = "true"
+        with self.assertRaises(analyze.DataError):
+            analyze.build_tickets(rows, strict=True)
+        # 宽松模式：只告警，继续跑完
+        tickets, warnings = analyze.build_tickets(rows, strict=False)
+        self.assertEqual(len(tickets), 50)
+        self.assertTrue(any("紧急" in w for w in warnings))
+
+    def test_strict_flag_wired_in_cli(self):
+        parser = analyze.build_parser()
+        args = parser.parse_args(["--strict", "--quiet"])
+        self.assertTrue(args.strict)
+
+
+class TestCharts(unittest.TestCase):
+    def test_six_charts_generated(self):
+        rows = load_fixture_rows()
+        _, result = rows_to_result(rows)
+        charts = result["charts"]
+        self.assertEqual(len(charts), 6)
+        self.assertIn("06_hourly.svg", charts)
+        for name, svg in charts.items():
+            self.assertTrue(svg.startswith("<svg"), name)
+            self.assertTrue(svg.rstrip().endswith("</svg>"), name)
+
 
 class TestClustersAndAnomalies(unittest.TestCase):
     @classmethod

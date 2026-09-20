@@ -237,6 +237,20 @@ def safe_mean(values: Iterable[float]) -> Optional[float]:
     return round(statistics.fmean(vals), 2) if vals else None
 
 
+def percentile_linear(values: Sequence[float], p: float) -> Optional[float]:
+    """线性插值分位数（Excel / numpy 默认口径），用于"全量口径"对照，避免与常见工具算出的数对不上。"""
+    vals = sorted(values)
+    if not vals:
+        return None
+    if len(vals) == 1:
+        return round(vals[0], 2)
+    pos = (len(vals) - 1) * p
+    lo, hi = math.floor(pos), math.ceil(pos)
+    if lo == hi:
+        return round(vals[int(pos)], 2)
+    return round(vals[lo] + (vals[hi] - vals[lo]) * (pos - lo), 2)
+
+
 def poisson_tail(k: int, lam: float) -> float:
     """P(X >= k)，X ~ Poisson(lam)。用对数空间避免溢出。"""
     if k <= 0:
@@ -380,8 +394,19 @@ def load_rows(path: Path) -> Tuple[List[Dict[str, Any]], List[str]]:
     return rows, warnings
 
 
-def build_tickets(rows: List[Dict[str, Any]]) -> Tuple[List[Ticket], List[str]]:
+class DataError(RuntimeError):
+    """--strict 模式下输入不符合字段契约时抛出。"""
+
+
+def build_tickets(rows: List[Dict[str, Any]], strict: bool = False) -> Tuple[List[Ticket], List[str]]:
     warnings: List[str] = []
+    violations: List[str] = []
+
+    def flag(message: str) -> None:
+        """记录问题：默认进 warnings 继续跑；--strict 时同时记为硬违规。"""
+        warnings.append(message)
+        violations.append(message)
+
     tickets: List[Ticket] = []
     seen: Dict[str, int] = {}
     dropped_dates = 0
@@ -400,29 +425,30 @@ def build_tickets(rows: List[Dict[str, Any]]) -> Tuple[List[Ticket], List[str]]:
         dt = _parse_dt(row.get("created_at"))
         if dt is None:
             dropped_dates += 1
+            flag(f"第 {idx} 行的创建时间缺失或格式错误：{raw.get('created_at')!r}（该条被跳过）")
             continue
 
         tid = str(row.get("ticket_id") or f"ROW{idx}")
         if tid in seen:
-            warnings.append(f"工单号重复：{tid}（保留首次出现，跳过后续）")
+            flag(f"工单号重复：{tid}（保留首次出现，跳过后续）")
             continue
         seen[tid] = idx
 
         priority = str(row.get("priority") or "未标注").strip()
         if priority not in EXPECTED_PRIORITIES:
-            warnings.append(f"工单 {tid} 的优先级取值异常：{priority!r}（不计入 SLA 判定）")
+            flag(f"工单 {tid} 的优先级取值异常：{priority!r}（不计入 SLA 判定）")
         channel = str(row.get("channel") or "未知").strip()
         if channel not in EXPECTED_CHANNELS:
-            warnings.append(f"工单 {tid} 的渠道取值不在字段说明内：{channel!r}")
+            flag(f"工单 {tid} 的渠道取值不在字段说明内：{channel!r}")
 
         raw_hours = row.get("resolution_time_hours")
         hours = _to_float(raw_hours)
         if raw_hours is None:
             missing_hours += 1
         elif hours is None:
-            warnings.append(f"工单 {tid} 的处理时长无法解析（{raw_hours!r}），已忽略该值")
+            flag(f"工单 {tid} 的处理时长无法解析（{raw_hours!r}），已忽略该值")
         if hours is not None and hours < 0:
-            warnings.append(f"工单 {tid} 的处理时长为负数（{hours}），已忽略该值")
+            flag(f"工单 {tid} 的处理时长为负数（{hours}），已忽略该值")
             bad_numbers += 1
             hours = None
 
@@ -431,16 +457,19 @@ def build_tickets(rows: List[Dict[str, Any]]) -> Tuple[List[Ticket], List[str]]:
         if raw_sat is None:
             missing_sat += 1
         elif sat is None:
-            warnings.append(f"工单 {tid} 的满意度无法解析（{raw_sat!r}），已忽略该值")
+            flag(f"工单 {tid} 的满意度无法解析（{raw_sat!r}），已忽略该值")
         if sat is not None and not 1 <= sat <= 5:
-            warnings.append(f"工单 {tid} 的满意度越界（{sat}），已忽略该值")
+            flag(f"工单 {tid} 的满意度越界（{sat}），已忽略该值")
             bad_numbers += 1
             sat = None
 
-        resolved = _to_bool(row.get("is_resolved"))
+        raw_resolved = row.get("is_resolved")
+        resolved = _to_bool(raw_resolved)
         if resolved is None:
-            warnings.append(f"工单 {tid} 缺少 is_resolved，按未解决处理")
+            flag(f"工单 {tid} 的 is_resolved 缺失或不是布尔值（{raw_resolved!r}），按未解决处理")
             resolved = False
+        elif not isinstance(raw_resolved, bool) and strict:
+            flag(f"工单 {tid} 的 is_resolved 不是布尔类型：{raw_resolved!r}")
 
         tickets.append(Ticket(
             ticket_id=tid,
@@ -463,6 +492,10 @@ def build_tickets(rows: List[Dict[str, Any]]) -> Tuple[List[Ticket], List[str]]:
         warnings.append(f"有 {missing_sat} 条工单缺少满意度评分，已从满意度统计的分母中剔除")
     if missing_hours:
         warnings.append(f"有 {missing_hours} 条工单缺少处理时长，已从时长与 SLA 统计中剔除")
+    if strict and violations:
+        head = "\n  - ".join(violations[:10])
+        more = "" if len(violations) <= 10 else f"\n  … 还有 {len(violations) - 10} 条"
+        raise DataError(f"--strict 模式发现 {len(violations)} 处字段契约违规：\n  - {head}{more}")
     return tickets, warnings
 
 
@@ -529,6 +562,36 @@ def compute_metrics(tickets: List[Ticket], sla: Dict[str, float], ratio: float) 
         time_dim["growth_pct"] = round(
             (len(late) / len(late_days)) / (len(early) / len(early_days)) - 1, 3
         )
+    # 滚动对比：最近 3 天 vs 之前 3 天（对主管更直观的"最近有没有变化"）
+    rolling = OrderedDict([("window", 3), ("available", False), ("recent_days", []), ("prior_days", [])])
+    if len(days) >= 6:
+        recent_days, prior_days = days[-3:], days[-6:-3]
+        recent_n = sum(daily[d] for d in recent_days)
+        prior_n = sum(daily[d] for d in prior_days)
+        recent_avg = round(recent_n / len(recent_days), 2)
+        prior_avg = round(prior_n / len(prior_days), 2)
+        change = round((recent_avg / prior_avg - 1), 3) if prior_avg else None
+        if change is None:
+            trend = "样本不足"
+        elif change >= 0.2:
+            trend = "增长"
+        elif change <= -0.2:
+            trend = "下降"
+        else:
+            trend = "稳定"
+        rolling.update(OrderedDict([
+            ("available", True), ("recent_days", recent_days), ("prior_days", prior_days),
+            ("recent_count", recent_n), ("prior_count", prior_n),
+            ("recent_avg", recent_avg), ("prior_avg", prior_avg),
+            ("change_pct", change), ("trend", trend), ("threshold", 0.2),
+        ]))
+    time_dim["rolling_3d"] = rolling
+    # 时段分布（排班价值）
+    hourly = OrderedDict((f"{h:02d}", sum(1 for t in tickets if t.created_at.hour == h)) for h in range(24))
+    busy = sorted([(h, c) for h, c in hourly.items() if c], key=lambda kv: (-kv[1], kv[0]))
+    time_dim["hourly"] = hourly
+    time_dim["peak_hours"] = [h for h, _ in busy[:3]]
+    time_dim["busiest_hour"] = busy[0][0] if busy else None
 
     # D2 分类结构
     cat_counts = Counter(t.category for t in tickets)
@@ -573,14 +636,20 @@ def compute_metrics(tickets: List[Ticket], sla: Dict[str, float], ratio: float) 
     for c, _ in cat_counts.most_common():
         rows = [t for t in resolved if t.category == c]
         hours = [t.resolution_hours for t in rows]
+        alt_hours = [t.resolution_hours for t in tickets if t.category == c and t.resolution_hours is not None]
         by_cat[c] = OrderedDict([
             ("resolved", len(rows)),
             ("mean", safe_mean(hours)),
             ("p50", percentile(hours, 0.5)),
             ("p90", percentile(hours, 0.9)),
             ("max", max(hours) if hours else None),
+            # 全量口径（含未解决工单的"已挂起时长"，分位数用线性插值）：与常见 Excel/numpy 口径对齐
+            ("alt_mean", safe_mean(alt_hours)),
+            ("alt_p90", percentile_linear(alt_hours, 0.9)),
+            ("alt_max", max(alt_hours) if alt_hours else None),
             ("unresolved", sum(1 for t in unresolved if t.category == c)),
         ])
+    all_hours = [t.resolution_hours for t in tickets if t.resolution_hours is not None]
     breaches = [
         OrderedDict([
             ("ticket_id", t.ticket_id),
@@ -608,6 +677,14 @@ def compute_metrics(tickets: List[Ticket], sla: Dict[str, float], ratio: float) 
         ("p50", percentile(global_hours, 0.5)),
         ("p90", percentile(global_hours, 0.9)),
         ("max", max(global_hours) if global_hours else None),
+        # 全量口径：包含未解决工单的挂起时长，分位数用线性插值（与同行/Excel 结果可对齐）
+        ("alt", OrderedDict([
+            ("n", len(all_hours)),
+            ("mean", safe_mean(all_hours)),
+            ("p50", percentile_linear(all_hours, 0.5)),
+            ("p90", percentile_linear(all_hours, 0.9)),
+            ("max", max(all_hours) if all_hours else None),
+        ])),
         ("resolved_count", len(resolved)),
         ("unresolved_count", len(unresolved)),
         ("unresolved_rate", round(len(unresolved) / len(tickets), 4) if tickets else None),
@@ -1071,6 +1148,70 @@ def build_anomalies(tickets: List[Ticket], metrics: Dict[str, Any], clusters: Li
     return anomalies
 
 
+def rank_tickets(tickets: List[Ticket], metrics: Dict[str, Any], clusters: List[Cluster],
+                 sla: Dict[str, float]) -> List[Dict[str, Any]]:
+    """工单级跟进清单：把"信号级"结论落到"今天先处理哪几张单"。
+
+    评分规则（公开可审计，与需求文档 §7.2 一致）：
+      未解决 +3；未解决且挂起已超 SLA +1；高优先级 +2（中 +1）；
+      耗时/挂起 ≥ 全量口径 P90 +2；满意度 ≤2 +2；命中复发簇 +1。
+    分级：P1 ≥9 分（今天处理）、P2 7–8 分（本周跟进）、P3 5–6 分（备查，只列工单号）；
+    低于 5 分不进清单 —— 阈值按本数据集的分数分布标定，保证 P1/P2 是真正需要人介入的那一小撮。
+    """
+    p90 = metrics["resolution"]["alt"]["p90"] or 0
+    cluster_of: Dict[str, Cluster] = {}
+    for c in clusters:
+        for t in c.tickets:
+            cluster_of[t.ticket_id] = c
+
+    ranked: List[Dict[str, Any]] = []
+    for t in tickets:
+        score = 0
+        reasons: List[str] = []
+        if not t.is_resolved:
+            score += 3
+            reasons.append("未解决")
+            if t.priority in sla and (t.resolution_hours or 0) > sla[t.priority]:
+                score += 1
+                reasons.append(f"挂起 {num(t.resolution_hours, 0)}h 已超 SLA {num(sla[t.priority], 0)}h")
+        if t.priority == "高":
+            score += 2
+            reasons.append("高优先级")
+        elif t.priority == "中":
+            score += 1
+            reasons.append("中优先级")
+        if t.resolution_hours is not None and p90 and t.resolution_hours >= p90:
+            score += 2
+            reasons.append(f"耗时 {num(t.resolution_hours, 0)}h ≥ 全量 P90 {num(p90, 1)}h")
+        if t.satisfaction is not None and t.satisfaction <= 2:
+            score += 2
+            reasons.append(f"满意度 {t.satisfaction} 分")
+        c = cluster_of.get(t.ticket_id)
+        if c is not None:
+            score += 1
+            reasons.append(f"命中复发簇：{c.name}")
+
+        level = "P1" if score >= 9 else "P2" if score >= 7 else "P3" if score >= 5 else ""
+        if not level:
+            continue
+        ranked.append(OrderedDict([
+            ("ticket_id", t.ticket_id),
+            ("level", level),
+            ("score", score),
+            ("category", t.category),
+            ("priority", t.priority),
+            ("is_resolved", t.is_resolved),
+            ("hours", t.resolution_hours),
+            ("satisfaction", t.satisfaction),
+            ("cluster", c.name if c else None),
+            ("reasons", reasons),
+        ]))
+    ranked.sort(key=lambda r: (-r["score"], r["ticket_id"]))
+    for i, r in enumerate(ranked, start=1):
+        r["rank"] = i
+    return ranked
+
+
 # ---------------------------------------------------------------- SVG 图表
 
 
@@ -1269,6 +1410,38 @@ def chart_backlog(metrics: Dict[str, Any]) -> str:
     return "".join(parts)
 
 
+def chart_hourly(metrics: Dict[str, Any]) -> str:
+    hourly = metrics["time"]["hourly"]
+    hours = list(hourly.keys())
+    peaks = set(metrics["time"].get("peak_hours") or [])
+    w, h = 860, 300
+    left, right, top, bottom = 56, 24, 64, 48
+    max_v = max(list(hourly.values()) + [1])
+    x = Scale(0, len(hours), left, w - right)
+    y = Scale(0, max_v + 1, h - bottom, top)
+    bar_w = (w - left - right) / len(hours) * 0.62
+    peak_txt = "、".join(f"{p}:00" for p in sorted(peaks)) if peaks else "—"
+    parts = svg_header(w, h, "D9 时段分布（按工单创建小时）",
+                       f"高峰时段：{peak_txt}；用于客服排班与高峰值守（样本量小，只作参考）")
+    for gv in range(0, max_v + 2):
+        yy = y(gv)
+        parts.append(f'<line x1="{left}" y1="{yy:.1f}" x2="{w - right}" y2="{yy:.1f}" stroke="{PALETTE["grid"]}"/>')
+        parts.append(f'<text x="{left - 10}" y="{yy + 4:.1f}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="end">{gv}</text>')
+    for i, hh in enumerate(hours):
+        v = hourly[hh]
+        cx = x(i + 0.5)
+        color = PALETTE["orange"] if hh in peaks else PALETTE["blue_light"]
+        parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(v):.1f}" width="{bar_w:.1f}" '
+                     f'height="{max(0, y(0) - y(v)):.1f}" fill="{color}" rx="2"/>')
+        if v:
+            parts.append(f'<text x="{cx:.1f}" y="{y(v) - 6:.1f}" font-size="10.5" fill="{PALETTE["ink"]}" text-anchor="middle">{v}</text>')
+        if int(hh) % 2 == 0:
+            parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="10.5" fill="{PALETTE["muted"]}" text-anchor="middle">{hh}</text>')
+    parts.append(f'<text x="{left}" y="{h - 6}" font-size="11" fill="{PALETTE["muted"]}">横轴：小时（00–23）；橙柱 = 工单量最高的三个时段</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def build_charts(metrics: Dict[str, Any], clusters: List[Cluster]) -> "OrderedDict[str, str]":
     return OrderedDict([
         ("01_daily_volume.svg", chart_daily_volume(metrics)),
@@ -1276,6 +1449,7 @@ def build_charts(metrics: Dict[str, Any], clusters: List[Cluster]) -> "OrderedDi
         ("03_category_quadrant.svg", chart_category_quadrant(metrics)),
         ("04_payment_cluster_trend.svg", chart_cluster_trend(metrics, clusters)),
         ("05_backlog.svg", chart_backlog(metrics)),
+        ("06_hourly.svg", chart_hourly(metrics)),
     ])
 
 
@@ -1341,6 +1515,27 @@ def render_markdown(result: Dict[str, Any]) -> str:
     add("| --- |" + " --- |" * len(days))
     add("| 工单量 | " + " | ".join(str(m["time"]["daily"][d]) for d in days) + " |")
     add("")
+    roll = m["time"]["rolling_3d"]
+    if roll.get("available"):
+        add(f"- **滚动环比（最近 3 天 vs 此前 3 天）**：{roll['recent_avg']} 条/天 vs {roll['prior_avg']} 条/天，"
+            f"变化 {roll['change_pct'] * 100:+.1f}% → 判定「**{roll['trend']}**」"
+            f"（阈值 ±{int(roll['threshold'] * 100)}%，与常见看板口径一致）。")
+    else:
+        add("- 滚动环比：日期不足 6 天，样本不足，未做最近 3 天对比。")
+    add("")
+    add("### D9 时段分布（排班价值）")
+    add("")
+    add("![时段分布](charts/06_hourly.svg)")
+    add("")
+    add(f"- 高峰时段：{'、'.join(h + ':00' for h in sorted(m['time']['peak_hours']))}；"
+        f"最忙的小时是 {m['time']['busiest_hour']}:00。")
+    add("")
+    add("| 小时 | " + " | ".join(h for h, _ in sorted(m["time"]["hourly"].items())) + " |")
+    add("| --- |" + " --- |" * len(m["time"]["hourly"]))
+    add("| 工单量 | " + " | ".join(str(c) for _, c in sorted(m["time"]["hourly"].items())) + " |")
+    add("")
+    add("> 用途：把高峰期人力压在对应时段；本数据集只有 11 天、50 条，时段结论只能作为**参考**，需要更长窗口验证。")
+    add("")
 
     add("### D2 分类结构")
     add("")
@@ -1384,6 +1579,19 @@ def render_markdown(result: Dict[str, Any]) -> str:
     for c, info in m["resolution"]["by_category"].items():
         add(f"| {c} | {info['resolved']} | {num(info['mean'])}h | {num(info['p50'], 0)}h | {num(info['p90'], 0)}h | "
             f"{num(info['max'], 0)}h | {info['unresolved']} |")
+    add("")
+    alt = m["resolution"]["alt"]
+    add(f"**口径对照（同一份数据、两种口径）**：主口径只统计已解决工单（P50/P90 用 nearest-rank）；"
+        f"全量口径把未解决工单的“已挂起时长”也算进去（P90 用线性插值，与 Excel/numpy 默认一致）。"
+        f"全局：已解决口径均值 {num(m['resolution']['mean'])}h / P50 {num(m['resolution']['p50'], 0)}h / P90 {num(m['resolution']['p90'], 0)}h；"
+        f"全量口径均值 **{num(alt['mean'])}h** / P50 {num(alt['p50'], 0)}h / P90 **{num(alt['p90'], 0)}h**。"
+        f"两个数都对，差别只来自“未解决的 8 条算不算”。本工具主张用主口径做效率判断（未完成的工作不该算进处理效率），"
+        f"同时给出全量口径，方便与其它看板/工具对齐。")
+    add("")
+    add("| 分类 | 已解决口径 均值 | 已解决口径 P90 | 全量口径 均值 | 全量口径 P90 |")
+    add("| --- | ---: | ---: | ---: | ---: |")
+    for c, info in m["resolution"]["by_category"].items():
+        add(f"| {c} | {num(info['mean'])}h | {num(info['p90'], 0)}h | {num(info['alt_mean'])}h | {num(info['alt_p90'], 0)}h |")
     add("")
     add(f"**SLA 超时工单明细（{m['resolution']['breach_count']} 条，按超出时长排序）**")
     add("")
@@ -1467,7 +1675,36 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 shown = "、".join(a["tickets"][:12]) + ("…" if len(a["tickets"]) > 12 else "")
                 add(f"- **涉及工单**：{shown}")
             add("")
-    add("## 4. 方法与阈值")
+    add("## 4. 工单级优先跟进清单（今天先处理哪几张单）")
+    add("")
+    ranks = result.get("ticket_ranking") or []
+    if ranks:
+        counts = result["summary"]["ticket_levels"]
+        add(f"共 {len(ranks)} 条工单进入清单：**P1 {counts['P1']} 条、P2 {counts['P2']} 条、P3 {counts['P3']} 条**。"
+            "评分规则：未解决 +3；未解决且挂起已超 SLA +1；高优先级 +2（中 +1）；"
+            f"耗时/挂起 ≥ 全量口径 P90（{num(m['resolution']['alt']['p90'], 1)}h）+2；满意度 ≤2 +2；命中复发簇 +1。"
+            "分级：P1 ≥9 分（今天处理）、P2 7–8 分（本周跟进）、P3 5–6 分（备查，仅列工单号）；"
+            "阈值按本数据集的分数分布标定（8 分与 7 分之间存在明显断层），低于 5 分不进清单。")
+        add("")
+        add("> **P1/P2/P3 是本工具的跟进优先级，不是企业正式事故等级**，用于排序工作量，不用于对外通报。")
+        add("")
+        add("| # | 工单 | 等级 | 分值 | 分类 | 优先级 | 状态 | 时长/挂起 | 满意度 | 命中簇 | 命中原因 |")
+        add("| ---: | --- | --- | ---: | --- | --- | --- | ---: | ---: | --- | --- |")
+        show = [r for r in ranks if r["level"] in ("P1", "P2")]
+        for r in show:
+            add(f"| {r['rank']} | {r['ticket_id']} | **{r['level']}** | {r['score']} | {r['category']} | {r['priority']} | "
+                f"{'已解决' if r['is_resolved'] else '未解决'} | {num(r['hours'], 0)}h | "
+                f"{r['satisfaction'] if r['satisfaction'] is not None else '—'} | {r['cluster'] or '—'} | "
+                f"{'；'.join(r['reasons'])} |")
+        add("")
+        p3 = [r for r in ranks if r["level"] == "P3"]
+        if p3:
+            add(f"P3（5–6 分，共 {len(p3)} 条，备查/顺手处理）：{'、'.join(r['ticket_id'] for r in p3)}。")
+            add("")
+    else:
+        add("没有工单达到 5 分（未解决 / 高优先级 / 超 P90 / 低满意度 / 命中复发簇 的累积分）。")
+        add("")
+    add("## 5. 方法与阈值")
     add("")
     add("| 信号 | 触发阈值 |")
     add("| --- | --- |")
@@ -1485,7 +1722,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
     add("**辅助概率校验**：泊松尾部概率（分类/簇的频率突增）与二项尾部概率（高优先级占比变化），"
         "用于排除明显偶然；详见实现文档 §5.4。")
     add("")
-    add("## 5. 局限性与后续建议")
+    add("## 6. 局限性与后续建议")
     add("")
     add("1. **样本小**：仅 " + str(result["meta"]["total"]) + " 条 / " + str(result["meta"]["days"])
         + " 天，且无历史基线，只能做窗口内前后对比，无法区分季节性与事件驱动。")
@@ -1601,9 +1838,17 @@ footer{color:var(--muted);font-size:12px;margin-top:26px}
 
     add('<h2>① 趋势与结构</h2>')
     charts = result.get("charts") or {}
-    for key in ("01_daily_volume.svg", "02_category_mix.svg", "03_category_quadrant.svg"):
+    for key in ("01_daily_volume.svg", "02_category_mix.svg", "03_category_quadrant.svg", "06_hourly.svg"):
         if key in charts:
             add(f'<div class="card">{charts[key]}</div>')
+
+    roll = m["time"]["rolling_3d"]
+    if roll.get("available"):
+        add('<div class="card"><h3>滚动环比（最近 3 天 vs 此前 3 天）</h3>'
+            f'<p>最近 3 天日均 <strong>{roll["recent_avg"]}</strong> 条（{esc("、".join(d[5:] for d in roll["recent_days"]))}），'
+            f'此前 3 天日均 <strong>{roll["prior_avg"]}</strong> 条（{esc("、".join(d[5:] for d in roll["prior_days"]))}），'
+            f'变化 <strong>{roll["change_pct"] * 100:+.1f}%</strong> → 判定「<strong>{esc(roll["trend"])}</strong>」'
+            f'（阈值 ±{int(roll["threshold"] * 100)}%）。</p></div>')
 
     add('<h2>② 复发簇与积压</h2>')
     for key in ("04_payment_cluster_trend.svg", "05_backlog.svg"):
@@ -1637,9 +1882,29 @@ footer{color:var(--muted);font-size:12px;margin-top:26px}
                 + "".join(f"<span>{esc(t)}</span>" for t in a["tickets"][:16]) + "</div>")
         add("</div>")
 
-    add('<h2>④ 分类明细</h2><div class="card"><table><thead><tr>'
+    ranks = result.get("ticket_ranking") or []
+    add('<h2>④ 工单级优先跟进清单</h2><div class="card">')
+    if ranks:
+        counts = result["summary"]["ticket_levels"]
+        add(f'<p>共 {len(ranks)} 条进入清单：<strong>P1 {counts["P1"]} 条、P2 {counts["P2"]} 条、P3 {counts["P3"]} 条</strong>'
+            f'（未解决 +3 / 高优 +2 / 超全量 P90 {num(m["resolution"]["alt"]["p90"], 1)}h +2 / 满意度 ≤2 +2 / 命中复发簇 +1）。'
+            '<span class="kv">P1 ≥9 / P2 7–8 / P3 5–6 分；P1/P2/P3 是本工具的跟进优先级，不是企业正式事故等级。</span></p>')
+        add('<table><thead><tr><th>#</th><th>工单</th><th>等级</th><th>分值</th><th>分类</th><th>优先级</th>'
+            '<th>状态</th><th>时长/挂起</th><th>满意度</th><th>命中原因</th></tr></thead><tbody>')
+        for r in [x for x in ranks if x["level"] in ("P1", "P2")]:
+            add(f'<tr><td>{r["rank"]}</td><td>{esc(r["ticket_id"])}</td><td><strong>{esc(r["level"])}</strong></td>'
+                f'<td>{r["score"]}</td><td>{esc(r["category"])}</td><td>{esc(r["priority"])}</td>'
+                f'<td>{"已解决" if r["is_resolved"] else "未解决"}</td><td>{num(r["hours"], 0)}h</td>'
+                f'<td>{r["satisfaction"] if r["satisfaction"] is not None else "—"}</td>'
+                f'<td>{esc("；".join(r["reasons"]))}</td></tr>')
+        add("</tbody></table>")
+    else:
+        add("<p>没有工单达到 5 分，未生成清单。</p>")
+    add("</div>")
+
+    add('<h2>⑤ 分类明细</h2><div class="card"><table><thead><tr>'
         '<th>分类</th><th>条数</th><th>占比</th><th>前半</th><th>后半</th><th>漂移</th><th>高优占比</th>'
-        '<th>满意度</th><th>低分率</th><th>P50</th><th>P90</th><th>未解决</th></tr></thead><tbody>')
+        '<th>满意度</th><th>低分率</th><th>P50</th><th>P90</th><th>全量均值</th><th>全量P90</th><th>未解决</th></tr></thead><tbody>')
     for c, n in m["category"]["counts"].items():
         ri = m["resolution"]["by_category"][c]
         si = m["satisfaction"]["by_category"][c]
@@ -1648,10 +1913,13 @@ footer{color:var(--muted);font-size:12px;margin-top:26px}
             f'<td>{m["category"]["share_shift_pp"][c]:+.1f}pp</td>'
             f'<td>{pct(m["priority"]["high_by_category"].get(c, 0) / max(1, n))}</td>'
             f'<td>{num(si["mean"])}</td><td>{pct(si["low_rate"])}</td>'
-            f'<td>{num(ri["p50"], 0)}h</td><td>{num(ri["p90"], 0)}h</td><td>{ri["unresolved"]}</td></tr>')
-    add("</tbody></table></div>")
+            f'<td>{num(ri["p50"], 0)}h</td><td>{num(ri["p90"], 0)}h</td>'
+            f'<td>{num(ri["alt_mean"])}h</td><td>{num(ri["alt_p90"], 0)}h</td><td>{ri["unresolved"]}</td></tr>')
+    add(f'</tbody></table><p class="kv">「P50/P90」= 已解决口径 + nearest-rank；「全量均值/全量P90」= 含未解决工单挂起时长 + 线性插值，'
+        f'用于与 Excel/numpy 等常见口径对齐。全局：已解决 {num(m["resolution"]["mean"])}h / '
+        f'全量 {num(m["resolution"]["alt"]["mean"])}h。</p></div>')
 
-    add('<h2>⑤ 方法与局限</h2><div class="card">')
+    add('<h2>⑥ 方法与局限</h2><div class="card">')
     add('<p><strong>口径</strong>：SLA = ' + esc("、".join(f"{k} {v:.0f}h" for k, v in result["meta"]["config"]["sla"].items()))
         + "（假设值）；未解决工单按“已挂起时长”统计，不进入 SLA 分母；分位数使用 nearest-rank。</p>")
     add("<p><strong>辅助概率校验</strong>：泊松尾部概率（频率突增）、二项尾部概率（高优先级占比变化）。"
@@ -1694,6 +1962,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
     )
     clusters, multi, cohesion_baseline = detect_clusters(tickets)
     anomalies = build_anomalies(tickets, metrics, clusters, args.min_cluster, sla)
+    ticket_ranking = rank_tickets(tickets, metrics, clusters, sla)
 
     # 二项校验：高优先级占比变化
     binom_p = None
@@ -1721,6 +1990,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
     ]
 
     level_counts = OrderedDict((lvl, sum(1 for a in anomalies if a["level"] == lvl)) for lvl in ("高危", "关注", "观察"))
+    rank_counts = OrderedDict((lvl, sum(1 for r in ticket_ranking if r["level"] == lvl)) for lvl in ("P1", "P2", "P3"))
 
     summary = OrderedDict([
         ("total", metrics["time"]["total"]),
@@ -1731,6 +2001,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
         ("unresolved", metrics["backlog"]["unresolved"]),
         ("breach_rate", metrics["resolution"]["breach_rate"]),
         ("levels", level_counts),
+        ("ticket_levels", rank_counts),
     ])
 
     summary_lines: List[str] = []
@@ -1749,12 +2020,14 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
             ])),
             ("summary", OrderedDict([("total", 0), ("daily_avg", 0), ("days", 0), ("high_share", None),
                                      ("low_score_rate", None), ("unresolved", 0), ("breach_rate", None),
-                                     ("levels", OrderedDict((l, 0) for l in ("高危", "关注", "观察")))])),
+                                     ("levels", OrderedDict((l, 0) for l in ("高危", "关注", "观察"))),
+                                     ("ticket_levels", OrderedDict((l, 0) for l in ("P1", "P2", "P3")))])),
             ("summary_lines", summary_lines),
             ("dimensions", metrics),
             ("clusters", []),
             ("_clusters", []),
             ("anomalies", []),
+            ("ticket_ranking", []),
             ("unclustered", []),
             ("multi_match", []),
             ("warnings", warnings),
@@ -1808,6 +2081,20 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
         f"复发簇共识别 {len(clusters)} 个，覆盖 {sum(c.size for c in clusters)} 条工单；"
         f"未归类 {len(unclustered)} 条，可能需要补充规则或人工复核。"
     )
+    roll = metrics["time"]["rolling_3d"]
+    if roll.get("available"):
+        summary_lines.append(
+            f"最近 3 天（{'、'.join(d[5:] for d in roll['recent_days'])}）日均 {roll['recent_avg']} 条，"
+            f"此前 3 天（{'、'.join(d[5:] for d in roll['prior_days'])}）日均 {roll['prior_avg']} 条，"
+            f"变化 {roll['change_pct'] * 100:+.1f}% → 判定为「{roll['trend']}」（阈值 ±20%）。"
+        )
+    if ticket_ranking:
+        top_ids = "、".join(r["ticket_id"] for r in ticket_ranking[:3])
+        summary_lines.append(
+            f"工单级跟进清单：P1 {rank_counts['P1']} 条、P2 {rank_counts['P2']} 条、P3 {rank_counts['P3']} 条"
+            f"（共 {len(ticket_ranking)} 条，按分值排序，最前面的 {top_ids}）；"
+            f"P1/P2 是本工具的跟进优先级，不是企业正式事故等级。"
+        )
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     result: Dict[str, Any] = OrderedDict([
@@ -1833,6 +2120,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
         ("clusters", cluster_summary),
         ("_clusters", clusters),
         ("anomalies", anomalies),
+        ("ticket_ranking", ticket_ranking),
         ("unclustered", unclustered),
         ("multi_match", multi),
         ("warnings", warnings),
@@ -1886,6 +2174,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sla", default="高=24,中=48,低=72", help="SLA 目标（小时），如 高=12,中=24,低=48")
     parser.add_argument("--split-ratio", type=float, default=0.5, help="前后半段切分比例（默认 0.5）")
     parser.add_argument("--min-cluster", type=int, default=3, help="簇进入异常候选的最小条数（默认 3）")
+    parser.add_argument("--strict", action="store_true",
+                        help="严格校验：字段类型/取值不合契约时直接报错退出（默认宽松告警并继续）")
     parser.add_argument("--quiet", action="store_true", help="只输出错误")
     parser.add_argument("--version", action="version", version=f"analyze.py {VERSION}")
     return parser
@@ -1910,7 +2200,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     rows, load_warnings = load_rows(input_path)
-    tickets, build_warnings = build_tickets(rows)
+    try:
+        tickets, build_warnings = build_tickets(rows, strict=args.strict)
+    except DataError as exc:
+        print(f"[错误] {exc}", file=sys.stderr)
+        return 1
     warnings = load_warnings + build_warnings + check_data_contract(tickets)
     result = build_result(tickets, warnings, args, input_path)
 
@@ -1934,7 +2228,7 @@ def build_charts_empty() -> "OrderedDict[str, str]":
     return OrderedDict([
         ("01_daily_volume.svg", svg), ("02_category_mix.svg", svg),
         ("03_category_quadrant.svg", svg), ("04_payment_cluster_trend.svg", svg),
-        ("05_backlog.svg", svg),
+        ("05_backlog.svg", svg), ("06_hourly.svg", svg),
     ])
 
 

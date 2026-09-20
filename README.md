@@ -251,9 +251,9 @@ uv run analyze.py --strict
 
 ![高危异常详情](screenshots/06-运行结果-高危异常详情.png)
 
-**7）运行结果**：Dashboard 整页截图（KPI 条 / 6 张图 / 复发簇表 / 异常卡，共 1600×6200 像素）
+**7）运行结果**：Dashboard 整页截图（KPI 条 / 6 张图 / 复发簇表 / 异常卡，共 1600×6400 像素）
 
-> Dashboard 的视觉语言遵循 **kami 设计规范**：暖羊皮纸底（`#f5f4ed`）、**唯一强调色 ink blue（`#1B365D`）**、其余全部为暖灰阶（`#504e49` / `#6b6a64` / `#b8b7b0` / `#d4d3cd`）、衬线主导的层级、细线分隔（无投影、无渐变、无外链字体）。图表调色板取自 kami 的数据图表 6 序列定义；宽表格与图表在窄屏可横向滑动，而不是把 860 宽的图缩成 4px 字号。
+> Dashboard 的视觉语言遵循 **kami 设计规范**：暖羊皮纸底（`#f5f4ed`）、**唯一强调色 ink blue（`#1B365D`）**、其余全部为暖灰阶（`#504e49` / `#6b6a64` / `#b8b7b0` / `#d4d3cd`）、衬线主导的层级、细线分隔、数值标签带遮罩线（无投影、无渐变）。**字体**：字体栈为「TsangerJinKai02（kami 品牌字体，需授权）→ 内嵌 Noto Serif SC 子集 → 系统衬线」，并把 Noto Serif SC（OFL）与 JetBrains Mono（OFL）子集以 data URI 内嵌进单文件，**不引用任何外部字体 URL**，线上与离线字形一致（见 [`assets/fonts/README.md`](assets/fonts/README.md)）。图表配色取自 kami 数据图表 6 序列定义；宽表格与图表在窄屏可横向滑动，而不是把 860 宽的图缩成 4px 字号。
 
 ![Dashboard](screenshots/07-运行结果-Dashboard.png)
 

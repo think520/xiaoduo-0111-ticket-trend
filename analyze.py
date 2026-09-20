@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import html
 import json
@@ -1233,9 +1234,31 @@ PALETTE = {
     "border": "#e8e6dc", "border_soft": "#e5e3d8",
 }
 
-#: 单一衬线字体栈（CN 走 kami 的降级链；不引用任何外部字体文件，保持离线可用）
-SERIF_STACK = ('Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", '
-               '"Noto Serif CJK SC", "Songti SC", "STSong", serif')
+#: 单一衬线字体栈：kami 品牌字体（TsangerJinKai02，需授权）优先，其次内嵌的开源子集，
+#: 再退到系统衬线。全部本地/内嵌，不引用任何外部字体 URL。
+SERIF_STACK = ('"TsangerJinKai02", "Kami Serif", Charter, Georgia, "Source Han Serif SC", '
+               '"Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", serif')
+MONO_STACK = ('"JetBrains Mono", "Kami Mono", "SF Mono", Consolas, "Kami Serif", '
+              '"Noto Serif SC", monospace')
+#: 内嵌字体（OFL 开源许可，已按本页用到的 646 个字符做子集化，见 assets/fonts/README.md）
+FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+EMBED_FONTS = (
+    ("Kami Serif", "NotoSerifSC-subset.woff2", "100 900"),
+    ("Kami Mono", "JetBrainsMono-subset.woff2", "100 900"),
+)
+
+
+def font_face_css() -> str:
+    """把字体子集以 data URI 内嵌：线上 Demo 与本地离线看到的是同一套字形。"""
+    rules = []
+    for family, filename, weight in EMBED_FONTS:
+        path = FONT_DIR / filename
+        if not path.exists():
+            continue
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        rules.append(f'@font-face{{font-family:"{family}";font-style:normal;font-weight:{weight};'
+                     f'src:url(data:font/woff2;base64,{b64}) format("woff2");font-display:swap}}')
+    return "".join(rules)
 
 
 class Scale:
@@ -1261,7 +1284,7 @@ def svg_header(width: int, height: int, title: str, subtitle: str = "",
         f'<rect width="{width}" height="{height}" fill="{PALETTE["parchment"]}"/>',
         f'<rect width="{width}" height="{height}" fill="url(#{pid})" opacity="0.55"/>',
         f'<text x="24" y="20" font-size="10" letter-spacing="2.4" fill="{PALETTE["muted"]}" '
-        f'font-family="\'JetBrains Mono\', Consolas, monospace">{esc(eyebrow)}</text>',
+        f'font-family=\'{MONO_STACK}\'>{esc(eyebrow)}</text>',
         f'<text x="24" y="42" font-size="16" font-weight="500" fill="{PALETTE["ink"]}">{esc(title)}</text>',
     ]
     if subtitle:
@@ -1299,6 +1322,9 @@ def chart_daily_volume(metrics: Dict[str, Any]) -> str:
         h_lo = base - y(total)
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(hi):.1f}" width="{bar_w:.1f}" height="{h_hi:.1f}" fill="{PALETTE["focal"]}" rx="2"/>')
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(total):.1f}" width="{bar_w:.1f}" height="{max(0, h_lo - h_hi):.1f}" fill="{PALETTE["series5"]}" rx="2"/>')
+        # 数值标签画在"遮罩"上，避免日均虚线从字里穿过（kami: labeling needs a masking rect）
+        parts.append(f'<rect x="{cx - 9:.1f}" y="{y(total) - 17:.1f}" width="18" height="14" '
+                     f'fill="{PALETTE["parchment"]}"/>')
         parts.append(f'<text x="{cx:.1f}" y="{y(total) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{total}</text>')
         parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
     parts.append(f'<line x1="{left}" y1="{h - 26}" x2="{w - right}" y2="{h - 26}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
@@ -1348,7 +1374,8 @@ def chart_category_quadrant(metrics: Dict[str, Any]) -> str:
     x = Scale(0, max(0.4, max(share.values()) * 1.15), left, w - right)
     y = Scale(1, 5, h - bottom, top)
     parts = svg_header(w, h, "D3 分类象限：影响面（占比） × 客户体验（满意度）",
-                       "气泡大小 = 工单量；左下区域 = 高频 + 低分，优先处理", pid="dotsQuad")
+                       "气泡 = 分类（大小 = 工单量）；左下区 = 占比 ≥20% 且满意度 ≤2.5，优先处理",
+                       pid="dotsQuad")
     parts.append(f'<rect x="{left}" y="{y(3.0):.1f}" width="{x(0.2) - left:.1f}" height="{h - bottom - y(3.0):.1f}" fill="{PALETTE["zone"]}"/>')
     parts.append(f'<line x1="{x(0.2):.1f}" y1="{top}" x2="{x(0.2):.1f}" y2="{h - bottom}" stroke="{PALETTE["grid"]}" stroke-dasharray="4 4"/>')
     parts.append(f'<line x1="{left}" y1="{y(3.0):.1f}" x2="{w - right}" y2="{y(3.0):.1f}" stroke="{PALETTE["grid"]}" stroke-dasharray="4 4"/>')
@@ -1358,37 +1385,31 @@ def chart_category_quadrant(metrics: Dict[str, Any]) -> str:
         if gv > max(0.4, max(share.values()) * 1.15):
             continue
         parts.append(f'<text x="{x(gv):.1f}" y="{h - bottom + 18}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{gv * 100:.0f}%</text>')
-    parts.append(f'<text x="{left}" y="{h - 18}" font-size="11" fill="{PALETTE["muted"]}">横轴：占总工单比例（影响面）</text>')
-    parts.append(f'<text x="{left}" y="{top - 14}" font-size="11" fill="{PALETTE["muted"]}">纵轴：满意度均值（1–5）</text>')
-    # 先算位置，再做标签防重叠：气泡会重叠，但标签必须能读
+    parts.append(f'<text x="{left}" y="{h - 18}" font-size="11" fill="{PALETTE["muted"]}">'
+                 f'横轴：占总工单比例（影响面） ｜ 纵轴：满意度均值（1–5）</text>')
+    # 先算位置，再做标签防重叠：标签一律放在气泡外，中文不往小圆里塞
     pts = []
     for c, n in counts.items():
         mean = sat.get(c, {}).get("mean") or 3
-        pts.append((c, n, x(share[c]), y(mean), 7 + math.sqrt(n) * 3.6, mean))
+        pts.append((c, n, x(share[c]), y(mean), 5 + math.sqrt(n) * 2.6, mean))
     used: List[Tuple[float, float]] = []
-    for c, n, cx, cy, r, mean in pts:
+    for c, n, cx, cy, r, mean in sorted(pts, key=lambda p: -p[1]):
         focal = share[c] >= 0.2 and (mean or 5) <= 2.5
         fill = PALETTE["tint"] if focal else PALETTE["ivory"]
         stroke = PALETTE["focal"] if focal else PALETTE["series3"]
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="{fill}" '
                      f'stroke="{stroke}" stroke-width="1.4"/>')
+        right_room = cx + r + 104 < w - right
+        tx = cx + r + 8 if right_room else cx - r - 8
+        anchor = "start" if right_room else "end"
         ly = cy
-        while any(abs(cx - ux) < 64 and abs(ly - uy) < 15 for ux, uy in used):
-            ly += 15
-        used.append((cx, ly))
-        if r >= 17:      # 大气泡：标签放进圆内
-            parts.append(f'<text x="{cx:.1f}" y="{ly + 4:.1f}" font-size="12" fill="{PALETTE["ink"]}" '
-                         f'text-anchor="middle">{esc(c)}</text>')
-            parts.append(f'<text x="{cx:.1f}" y="{cy + r + 14:.1f}" font-size="10.5" fill="{PALETTE["muted"]}" '
-                         f'text-anchor="middle">{n} 条 · {num(mean)} 分</text>')
-        else:            # 小气泡：标签放到圆外，避免文字挤在圆里
-            right_room = cx + r + 96 < w - right
-            tx = cx + r + 6 if right_room else cx - r - 6
-            anchor = "start" if right_room else "end"
-            parts.append(f'<text x="{tx:.1f}" y="{ly + 4:.1f}" font-size="11.5" fill="{PALETTE["ink"]}" '
-                         f'text-anchor="{anchor}">{esc(c)}</text>')
-            parts.append(f'<text x="{tx:.1f}" y="{ly + 17:.1f}" font-size="10.5" fill="{PALETTE["muted"]}" '
-                         f'text-anchor="{anchor}">{n} 条 · {num(mean)} 分</text>')
+        while any(abs(tx - ux) < 92 and abs(ly - uy) < 21 for ux, uy in used):
+            ly += 21
+        used.append((tx, ly))
+        parts.append(f'<text x="{tx:.1f}" y="{ly + 4:.1f}" font-size="11.5" fill="{PALETTE["ink"]}" '
+                     f'text-anchor="{anchor}">{esc(c)}</text>')
+        parts.append(f'<text x="{tx:.1f}" y="{ly + 18:.1f}" font-size="10.5" fill="{PALETTE["muted"]}" '
+                     f'text-anchor="{anchor}">{n} 条 · {num(mean)} 分</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -1423,6 +1444,7 @@ def chart_cluster_trend(metrics: Dict[str, Any], clusters: List[Cluster]) -> str
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(cluster_v):.1f}" width="{bar_w:.1f}" height="{max(0, y(0) - y(cluster_v)):.1f}" fill="{PALETTE["focal"]}" rx="2"/>')
         parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
         if cluster_v:
+            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(cluster_v) - 17:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
             parts.append(f'<text x="{cx:.1f}" y="{y(cluster_v) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{cluster_v}</text>')
     parts.append(f'<line x1="{left}" y1="{h - 26}" x2="{w - right}" y2="{h - 26}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
                  f'<rect x="{left}" y="{h - 16}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
@@ -1455,6 +1477,7 @@ def chart_backlog(metrics: Dict[str, Any]) -> str:
         px, py = pts[i]
         parts.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="3" fill="{PALETTE["ivory"]}" stroke="{PALETTE["focal"]}" stroke-width="1.6"/>')
         parts.append(f'<text x="{px:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
+        parts.append(f'<rect x="{px - 9:.1f}" y="{py - 19:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
         parts.append(f'<text x="{px:.1f}" y="{py - 8:.1f}" font-size="10.5" fill="{PALETTE["ink"]}" text-anchor="middle">{cdf[d]}</text>')
     parts.append("</svg>")
     return "".join(parts)
@@ -1485,6 +1508,7 @@ def chart_hourly(metrics: Dict[str, Any]) -> str:
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(v):.1f}" width="{bar_w:.1f}" '
                      f'height="{max(0, y(0) - y(v)):.1f}" fill="{color}" rx="2"/>')
         if v:
+            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(v) - 17:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
             parts.append(f'<text x="{cx:.1f}" y="{y(v) - 6:.1f}" font-size="10.5" fill="{PALETTE["ink"]}" text-anchor="middle">{v}</text>')
         if int(hh) % 2 == 0:
             parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="10.5" fill="{PALETTE["muted"]}" text-anchor="middle">{hh}</text>')
@@ -1832,14 +1856,16 @@ def render_html(result: Dict[str, Any]) -> str:
     add("<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
     add("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
     add(f"<title>客服工单趋势分析 Dashboard · {result['meta']['window']['start']} ~ {result['meta']['window']['end']}</title>")
-    add("""<style>
+    add("<style>")
+    add(font_face_css())
+    add("""
 /* kami 设计语言：warm parchment · ink-blue accent · serif-led · 单一强调色 */
 :root{
   --parchment:#f5f4ed; --ivory:#faf9f5; --brand:#1B365D; --brand-tint:#EEF2F7;
   --ink:#141413; --dark-warm:#3d3d3a; --olive:#504e49; --stone:#6b6a64;
   --border:#e8e6dc; --border-soft:#e5e3d8; --sand:#e8e6dc;
-  --serif:Charter,Georgia,"TsangerJinKai02","Source Han Serif SC","Noto Serif CJK SC","Songti SC","STSong",serif;
-  --mono:"JetBrains Mono","SF Mono",Consolas,"Source Han Serif SC","Noto Serif CJK SC",monospace;
+  --serif:"TsangerJinKai02","Kami Serif",Charter,Georgia,"Source Han Serif SC","Noto Serif CJK SC","Noto Serif SC","Songti SC","STSong",serif;
+  --mono:"JetBrains Mono","Kami Mono","SF Mono",Consolas,"Kami Serif","Noto Serif SC",monospace;
   --sans:var(--serif);
 }
 *{box-sizing:border-box}

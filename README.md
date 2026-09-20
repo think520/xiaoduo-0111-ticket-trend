@@ -1,5 +1,10 @@
 # 客服工单趋势分析工具（任务 0111）
 
+[![tests](https://github.com/think520/xiaoduo-0111-ticket-trend/actions/workflows/tests.yml/badge.svg)](https://github.com/think520/xiaoduo-0111-ticket-trend/actions/workflows/tests.yml)
+[![Deploy Pages](https://github.com/think520/xiaoduo-0111-ticket-trend/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/think520/xiaoduo-0111-ticket-trend/actions/workflows/deploy-pages.yml)
+
+> **只想快速了解？** 看 [SUBMISSION.md](SUBMISSION.md)：30 秒结论 + 交付物索引 + 截图索引 + 要求对照 + 自评。
+
 把"人工翻工单列表"变成**结构化趋势报告 + 可复核的异常清单**：主管只负责判断，机器负责算分布、算变化、找复发。
 
 **一句话定义**：零第三方依赖的 Python 工具，读取工单数据（JSON/CSV），输出 Markdown 报告 + 自包含 HTML Dashboard + 机器可读指标，并且**每一条异常都带证据、判断依据、建议动作和复核方式**。
@@ -42,7 +47,8 @@ uv run analyze.py --strict
 | 类别 | 文件 |
 | --- | --- |
 | 代码 | [`analyze.py`](analyze.py)（单文件：加载/校验/指标/簇/工单级评分/SVG/渲染）、[`tests/test_analyze.py`](tests/test_analyze.py)（45 个用例）、[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) |
-| 文档 | [`docs/01-需求文档.md`](docs/01-需求文档.md)、[`docs/02-实现文档.md`](docs/02-实现文档.md)、本 README |
+| 文档 | [`SUBMISSION.md`](SUBMISSION.md)（提交速览）、[`docs/01-需求文档.md`](docs/01-需求文档.md)、[`docs/02-实现文档.md`](docs/02-实现文档.md)、本 README |
+| CI | [`.github/workflows/tests.yml`](.github/workflows/tests.yml)（3 个 Python 版本 × 产物/结论/退出码校验）、[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) |
 | 结果 | [`output/趋势分析报告.md`](output/趋势分析报告.md)、[`output/dashboard.html`](output/dashboard.html)、[`output/metrics.json`](output/metrics.json) |
 | 截图 | [`screenshots/`](screenshots)：开发工具、单元测试、运行输出、报告摘要、异常清单与得分、高危异常详情 |
 

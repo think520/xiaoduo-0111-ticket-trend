@@ -1,0 +1,75 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 零依赖自检（不应安装任何第三方包）
+        run: |
+          python - <<'PY'
+          import importlib.util as u
+          for mod in ("pandas", "numpy", "matplotlib", "requests"):
+              assert u.find_spec(mod) is None, f"{mod} 不应出现在运行环境里"
+          print("环境干净：无第三方依赖")
+          PY
+
+      - name: 运行分析（默认产物）
+        run: python analyze.py --quiet
+
+      - name: 运行分析（严格校验）
+        run: python analyze.py --strict --quiet
+
+      - name: 运行分析（只要 Markdown 时也必须落盘图表）
+        run: |
+          python analyze.py --outdir /tmp/md-only --formats md --quiet
+          test "$(ls /tmp/md-only/charts/*.svg | wc -l)" -eq 6
+
+      - name: 校验产物齐全
+        run: |
+          test -f output/趋势分析报告.md
+          test -f output/dashboard.html
+          test -f output/metrics.json
+          test "$(ls output/charts/*.svg | wc -l)" -eq 6
+          python - <<'PY'
+          import json
+          m = json.load(open("output/metrics.json", encoding="utf-8"))
+          assert m["meta"]["total"] == 50, m["meta"]["total"]
+          assert m["level_counts"] == {"高危": 4, "关注": 7, "观察": 3}, m["level_counts"]
+          assert m["summary"]["ticket_levels"] == {"P1": 5, "P2": 5, "P3": 13}, m["summary"]["ticket_levels"]
+          assert m["ticket_ranking"][0]["ticket_id"] == "T031"
+          assert m["dimensions"]["resolution"]["alt"]["p90"] == 50.4
+          print("关键结论校验通过：50 条 / 14 条信号 / P1 5 条 / 双口径一致")
+          PY
+
+      - name: 单元测试
+        run: python -m unittest discover -s tests -v
+
+      - name: 错误输入行为（退出码）
+        run: |
+          set +e
+          printf '[]' > /tmp/empty.json
+          python analyze.py --input /tmp/empty.json --outdir /tmp/o-empty --quiet; test $? -eq 0
+          printf '[{' > /tmp/broken.json
+          python analyze.py --input /tmp/broken.json --outdir /tmp/o-broken --quiet; test $? -eq 1
+          python analyze.py --input /tmp/not-exist.json --quiet; test $? -eq 1
+          python analyze.py --sla 错误格式 --quiet; test $? -eq 2
+          echo "退出码行为符合预期"

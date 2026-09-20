@@ -313,6 +313,14 @@ def esc(text: Any) -> str:
     return html.escape(str(text), quote=True)
 
 
+def display_path(path: Path) -> str:
+    """展示用的输入路径：优先相对脚本目录，避免把本机绝对路径写进报告/Dashboard/JSON。"""
+    try:
+        return path.resolve().relative_to(Path(__file__).resolve().parent).as_posix()
+    except (ValueError, OSError):
+        return path.name
+
+
 # ---------------------------------------------------------------- 加载与校验
 
 
@@ -1220,7 +1228,6 @@ PALETTE = {
     "focal": "#1B365D",        # 唯一强调色（ink blue）：焦点数据 / 主序列
     "series2": "#504e49",      # olive：第二序列、参考线
     "series3": "#6b6a64",      # stone：第三序列、次级文字
-    "series4": "#b8b7b0",      # light-stone：第四序列
     "series5": "#d4d3cd",      # mist：第五序列 / 非焦点柱
     "tint": "#EEF2F7",         # brand-tint：浅色底（实心，非 rgba）
     "zone": "#f1efe8",         # 象限底色（羊皮纸预混实心色）
@@ -1228,8 +1235,7 @@ PALETTE = {
     "ink": "#141413",          # 主文字
     "sub": "#504e49",          # 次文字
     "muted": "#6b6a64",        # 三级文字 / 坐标轴标签
-    "parchment": "#f5f4ed", "ivory": "#faf9f5", "dots": "#E3E2DC",
-    "border": "#e8e6dc", "border_soft": "#e5e3d8",
+    "ivory": "#faf9f5",        # 图表画布 / 数值遮罩（与卡片同色）
 }
 
 #: 单一衬线字体栈：kami 品牌字体（TsangerJinKai02，需授权）优先，其次内嵌的开源子集，
@@ -1322,7 +1328,7 @@ def chart_daily_volume(metrics: Dict[str, Any]) -> str:
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(total):.1f}" width="{bar_w:.1f}" height="{max(0, h_lo - h_hi):.1f}" fill="{PALETTE["series5"]}" rx="2"/>')
         # 数值标签画在"遮罩"上，避免日均虚线从字里穿过（kami: labeling needs a masking rect）
         parts.append(f'<rect x="{cx - 9:.1f}" y="{y(total) - 17:.1f}" width="18" height="14" '
-                     f'fill="{PALETTE["parchment"]}"/>')
+                     f'fill="{PALETTE["ivory"]}"/>')
         parts.append(f'<text x="{cx:.1f}" y="{y(total) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{total}</text>')
         parts.append(f'<text x="{cx:.1f}" y="{h - 66}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
     # 图例自成一带：分隔线画在日期行下方，避免压到刻度文字
@@ -1455,7 +1461,7 @@ def chart_cluster_trend(metrics: Dict[str, Any], clusters: List[Cluster]) -> str
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(cluster_v):.1f}" width="{bar_w:.1f}" height="{max(0, y(0) - y(cluster_v)):.1f}" fill="{PALETTE["focal"]}" rx="2"/>')
         parts.append(f'<text x="{cx:.1f}" y="{h - 66}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
         if cluster_v:
-            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(cluster_v) - 17:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
+            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(cluster_v) - 17:.1f}" width="18" height="14" fill="{PALETTE["ivory"]}"/>')
             parts.append(f'<text x="{cx:.1f}" y="{y(cluster_v) - 6:.1f}" font-size="11" fill="{PALETTE["ink"]}" text-anchor="middle">{cluster_v}</text>')
     parts.append(f'<line x1="{left}" y1="{h - 46}" x2="{w - right}" y2="{h - 46}" stroke="{PALETTE["grid"]}" stroke-width="0.8"/>'
                  f'<rect x="{left}" y="{h - 38}" width="10" height="10" fill="{PALETTE["focal"]}" rx="2"/>'
@@ -1487,7 +1493,7 @@ def chart_backlog(metrics: Dict[str, Any]) -> str:
         px, py = pts[i]
         parts.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="3" fill="{PALETTE["ivory"]}" stroke="{PALETTE["focal"]}" stroke-width="1.6"/>')
         parts.append(f'<text x="{px:.1f}" y="{h - 24}" font-size="11" fill="{PALETTE["muted"]}" text-anchor="middle">{d[5:]}</text>')
-        parts.append(f'<rect x="{px - 9:.1f}" y="{py - 19:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
+        parts.append(f'<rect x="{px - 9:.1f}" y="{py - 19:.1f}" width="18" height="14" fill="{PALETTE["ivory"]}"/>')
         parts.append(f'<text x="{px:.1f}" y="{py - 8:.1f}" font-size="10.5" fill="{PALETTE["ink"]}" text-anchor="middle">{cdf[d]}</text>')
     parts.append("</svg>")
     return "".join(parts)
@@ -1517,7 +1523,7 @@ def chart_hourly(metrics: Dict[str, Any]) -> str:
         parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{y(v):.1f}" width="{bar_w:.1f}" '
                      f'height="{max(0, y(0) - y(v)):.1f}" fill="{color}" rx="2"/>')
         if v:
-            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(v) - 17:.1f}" width="18" height="14" fill="{PALETTE["parchment"]}"/>')
+            parts.append(f'<rect x="{cx - 9:.1f}" y="{y(v) - 17:.1f}" width="18" height="14" fill="{PALETTE["ivory"]}"/>')
             parts.append(f'<text x="{cx:.1f}" y="{y(v) - 6:.1f}" font-size="10.5" fill="{PALETTE["ink"]}" text-anchor="middle">{v}</text>')
         if int(hh) % 2 == 0:
             parts.append(f'<text x="{cx:.1f}" y="{h - 24}" font-size="10.5" fill="{PALETTE["muted"]}" text-anchor="middle">{hh}</text>')
@@ -2178,7 +2184,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
         generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return OrderedDict([
             ("meta", OrderedDict([
-                ("version", VERSION), ("input", str(input_path)), ("generated_at", generated_at),
+                ("version", VERSION), ("input", display_path(input_path)), ("generated_at", generated_at),
                 ("total", 0), ("days", 0),
                 ("window", OrderedDict([("start", None), ("end", None)])),
                 ("config", OrderedDict([
@@ -2268,7 +2274,7 @@ def build_result(tickets: List[Ticket], warnings: List[str], args: argparse.Name
     result: Dict[str, Any] = OrderedDict([
         ("meta", OrderedDict([
             ("version", VERSION),
-            ("input", str(input_path)),
+            ("input", display_path(input_path)),
             ("generated_at", generated_at),
             ("total", metrics["time"]["total"]),
             ("days", len(metrics["time"]["days"])),
